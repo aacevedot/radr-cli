@@ -85,6 +85,9 @@ impl AdrRepository for FsAdrRepository {
 
     fn list(&self) -> Result<Vec<AdrMeta>> {
         let mut res = Vec::new();
+        if !self.root.exists() {
+            return Ok(res);
+        }
         let re = Regex::new(r"^\d{4}-.*\.md$").unwrap();
         for entry in fs::read_dir(&self.root).with_context(|| {
             format!("Reading ADR directory at {}", self.root.display())
@@ -127,4 +130,3 @@ mod tests {
         assert!(list.is_empty());
     }
 }
-
