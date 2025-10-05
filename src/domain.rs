@@ -57,4 +57,3 @@ mod tests {
         assert_eq!(parse_number("0000").unwrap(), 0);
     }
 }
-

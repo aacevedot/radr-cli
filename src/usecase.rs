@@ -4,10 +4,10 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 
 use crate::config::Config;
-use crate::domain::{slugify, AdrMeta};
+use crate::domain::{slugify, AdrMeta, parse_number};
 use crate::repository::{AdrRepository, idx_path};
 
-pub fn create_new_adr<R: AdrRepository>(repo: &R, cfg: &Config, title: &str, status: &str, supersedes: Option<u32>) -> Result<AdrMeta> {
+pub fn create_new_adr<R: AdrRepository>(repo: &R, cfg: &Config, title: &str, supersedes: Option<u32>) -> Result<AdrMeta> {
     let mut adrs = repo.list()?;
     let next = adrs.iter().map(|a| a.number).max().unwrap_or(0) + 1;
     let slug = slugify(title);
@@ -21,12 +21,12 @@ pub fn create_new_adr<R: AdrRepository>(repo: &R, cfg: &Config, title: &str, sta
         tpl.replace("{{NUMBER}}", &format!("{:04}", next))
             .replace("{{TITLE}}", title)
             .replace("{{DATE}}", &date)
-            .replace("{{STATUS}}", status)
+            .replace("{{STATUS}}", "Proposed")
             .replace("{{SUPERSEDES}}", &supersedes.map(|n| format!("{:04}", n)).unwrap_or_else(|| "".to_string()))
     } else {
         let mut header = format!(
-            "# ADR {:04}: {}\n\nDate: {}\nStatus: {}\n",
-            next, title, date, status
+            "# ADR {:04}: {}\n\nDate: {}\nStatus: Proposed\n",
+            next, title, date
         );
         if let Some(n) = supersedes { header.push_str(&format!("Supersedes: {:04}\n", n)); }
         header.push_str(
@@ -37,7 +37,7 @@ pub fn create_new_adr<R: AdrRepository>(repo: &R, cfg: &Config, title: &str, sta
 
     repo.write_string(&path, &content)?;
 
-    let meta = AdrMeta { number: next, title: title.to_string(), status: status.to_string(), date: date.clone(), supersedes, superseded_by: None, path: path.clone() };
+    let meta = AdrMeta { number: next, title: title.to_string(), status: "Proposed".to_string(), date: date.clone(), supersedes, superseded_by: None, path: path.clone() };
     adrs.push(meta.clone());
     adrs.sort_by_key(|a| a.number);
     write_index(repo, cfg, &adrs)?;
@@ -93,6 +93,46 @@ pub fn list_and_index<R: AdrRepository>(repo: &R, cfg: &Config) -> Result<Vec<Ad
     Ok(adrs)
 }
 
+pub fn accept<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Result<AdrMeta> {
+    let adrs = repo.list()?;
+    // Try by number, else by title (case-insensitive exact match)
+    let target = match parse_number(id_or_title) {
+        Ok(n) if adrs.iter().any(|a| a.number == n) => adrs.into_iter().find(|a| a.number == n).unwrap(),
+        _ => {
+            let lower = id_or_title.trim().to_ascii_lowercase();
+            adrs.into_iter().find(|a| a.title.to_ascii_lowercase() == lower)
+                .ok_or_else(|| anyhow!("ADR not found by id or title: {}", id_or_title))?
+        }
+    };
+
+    let mut content = repo.read_string(&target.path)?;
+    let today = Local::now().format("%Y-%m-%d").to_string();
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    let mut found_status = false;
+    let mut found_date = false;
+    for l in &mut lines {
+        if l.starts_with("Status:") { *l = "Status: Accepted".to_string(); found_status = true; }
+        if l.starts_with("Date:") { *l = format!("Date: {}", today); found_date = true; }
+    }
+    if !found_status {
+        // insert after header line
+        let insert_at = if !lines.is_empty() { 1 } else { 0 };
+        lines.insert(insert_at, "Status: Accepted".to_string());
+    }
+    if !found_date {
+        lines.insert(1, format!("Date: {}", today));
+    }
+    content = lines.join("\n");
+    if !content.ends_with('\n') { content.push('\n'); }
+    repo.write_string(&target.path, &content)?;
+
+    // refresh index and return updated meta
+    let mut adrs2 = repo.list()?;
+    write_index(repo, cfg, &adrs2)?;
+    let updated = adrs2.into_iter().find(|a| a.number == target.number).ok_or_else(|| anyhow!("Updated ADR not found"))?;
+    Ok(updated)
+}
+
 fn write_index<R: AdrRepository>(repo: &R, cfg: &Config, adrs: &[AdrMeta]) -> Result<()> {
     let mut content = String::new();
     content.push_str("# Architecture Decision Records\n\n");
@@ -121,14 +161,16 @@ mod tests {
         let repo = FsAdrRepository::new(&adr_dir);
         let cfg = Config { adr_dir: adr_dir.clone(), index_name: "index.md".to_string(), template: None };
 
-        let meta = create_new_adr(&repo, &cfg, "First Decision", "Accepted", None).unwrap();
+        let meta = create_new_adr(&repo, &cfg, "First Decision", None).unwrap();
         assert_eq!(meta.number, 1);
         assert!(meta.path.exists());
+        assert_eq!(meta.status, "Proposed");
         let idx = cfg.adr_dir.join("index.md");
         assert!(idx.exists());
         let adrs = repo.list().unwrap();
         assert_eq!(adrs.len(), 1);
         assert_eq!(adrs[0].title, "First Decision");
+        assert_eq!(adrs[0].status, "Proposed");
     }
 
     #[test]
@@ -138,8 +180,8 @@ mod tests {
         let repo = FsAdrRepository::new(&adr_dir);
         let cfg = Config { adr_dir: adr_dir.clone(), index_name: "index.md".to_string(), template: None };
 
-        let old = create_new_adr(&repo, &cfg, "Choose X", "Accepted", None).unwrap();
-        let new_meta = create_new_adr(&repo, &cfg, "Choose Y", "Accepted", Some(old.number)).unwrap();
+        let old = create_new_adr(&repo, &cfg, "Choose X", None).unwrap();
+        let new_meta = create_new_adr(&repo, &cfg, "Choose Y", Some(old.number)).unwrap();
         mark_superseded(&repo, &cfg, old.number, new_meta.number).unwrap();
 
         let old_path = cfg.adr_dir.join(format!("{:04}-{}.md", old.number, crate::domain::slugify("Choose X")));
@@ -147,5 +189,25 @@ mod tests {
         assert!(contents.contains("Status: Superseded by 0002"));
         assert!(contents.contains("Superseded-by: 0002"));
     }
-}
 
+    #[test]
+    fn test_accept_by_id_and_title() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config { adr_dir: adr_dir.clone(), index_name: "index.md".to_string(), template: None };
+
+        let m1 = create_new_adr(&repo, &cfg, "Adopt Z", None).unwrap();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        let updated1 = accept(&repo, &cfg, &format!("{}", m1.number)).unwrap();
+        assert_eq!(updated1.status, "Accepted");
+        let c1 = repo.read_string(&updated1.path).unwrap();
+        assert!(c1.contains("Status: Accepted"));
+        assert!(c1.contains(&format!("Date: {}", today)));
+
+        let _m2 = create_new_adr(&repo, &cfg, "Pick W", None).unwrap();
+        let updated2 = accept(&repo, &cfg, "Pick W").unwrap();
+        assert_eq!(updated2.status, "Accepted");
+    }
+}
