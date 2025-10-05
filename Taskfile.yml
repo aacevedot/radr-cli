@@ -1,0 +1,79 @@
+version: '3'
+
+vars:
+  RADR_CONFIG: ""
+
+env:
+  RADR_CONFIG: "{{ .RADR_CONFIG }}"
+
+tasks:
+  default:
+    desc: Build the project in debug mode
+    cmds:
+      - task: build
+
+  build:
+    desc: Build (debug)
+    cmds:
+      - cargo build
+
+  release:
+    desc: Build (release)
+    cmds:
+      - cargo build --release
+
+  fmt:
+    desc: Format code with rustfmt
+    cmds:
+      - cargo fmt --all
+
+  clippy:
+    desc: Lint with clippy (deny warnings)
+    cmds:
+      - cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - cargo test --all
+
+  run:
+    desc: Run the CLI with arbitrary args
+    vars:
+      ARGS: "--help"
+    cmds:
+      - cargo run -- {{ .ARGS }}
+
+  # Convenience tasks for common commands
+  new:
+    desc: "Create a new ADR (vars: TITLE, STATUS)"
+    vars:
+      TITLE: "Example ADR"
+      STATUS: "Accepted"
+    cmds:
+      - cargo run -- new "{{ .TITLE }}" --status "{{ .STATUS }}"
+
+  supersede:
+    desc: "Create an ADR superseding another (vars: ID, TITLE)"
+    vars:
+      ID: "1"
+      TITLE: "Superseding ADR"
+    cmds:
+      - cargo run -- supersede {{ .ID }} "{{ .TITLE }}"
+
+  list:
+    desc: List ADRs and regenerate index
+    cmds:
+      - cargo run -- list
+
+  index:
+    desc: Regenerate index.md
+    cmds:
+      - cargo run -- index
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - cargo clean
+
+
