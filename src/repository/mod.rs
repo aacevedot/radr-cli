@@ -15,4 +15,3 @@ pub trait AdrRepository {
 pub fn idx_path(dir: &Path, index_name: &str) -> PathBuf {
     dir.join(index_name)
 }
-

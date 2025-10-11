@@ -1,13 +1,14 @@
 use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{Result, Context};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 
+use radr::actions::{accept, create_new_adr, list_and_index, mark_superseded, reject};
 use radr::config::load_config;
 use radr::domain::parse_number;
+use radr::repository::AdrRepository;
 use radr::{Config, FsAdrRepository};
-use radr::usecase::{create_new_adr, mark_superseded, list_and_index, accept};
 
 #[derive(Parser, Debug)]
 #[command(name = "radr", about = "Manage Architecture Decision Records (ADRs)")]
@@ -33,9 +34,17 @@ enum Commands {
         id: String,
         /// Title for the new ADR
         title: String,
+        /// Force superseding even if already superseded
+        #[arg(long)]
+        force: bool,
     },
     /// Accept an ADR by id or title
     Accept {
+        /// ADR id (number) or exact title
+        id_or_title: String,
+    },
+    /// Reject an ADR by id or title
+    Reject {
         /// ADR id (number) or exact title
         id_or_title: String,
     },
@@ -66,8 +75,28 @@ fn main() -> Result<()> {
                 meta.path.display()
             );
         }
-        Commands::Supersede { id, title } => {
+        Commands::Supersede { id, title, force } => {
             let old_num = parse_number(&id)?;
+            // Pre-check: if target ADR is already superseded, print helpful message and exit with error
+            if !force {
+                if let Ok(existing) = repo.list() {
+                    if let Some(old) = existing.iter().find(|a| a.number == old_num) {
+                        if let Some(sb) = old.superseded_by {
+                            let sb_title = existing
+                                .iter()
+                                .find(|a| a.number == sb)
+                                .map(|a| a.title.as_str())
+                                .unwrap_or("");
+                            eprintln!(
+                                "{:04}: {} is already superseded by {:04}: {}",
+                                old.number, old.title, sb, sb_title
+                            );
+                            return Err(anyhow!("ADR already superseded"));
+                        }
+                    }
+                }
+            }
+
             let new_meta = create_new_adr(&repo, &cfg, &title, Some(old_num))?;
             mark_superseded(&repo, &cfg, old_num, new_meta.number)?;
             println!(
@@ -77,27 +106,20 @@ fn main() -> Result<()> {
         }
         Commands::Accept { id_or_title } => {
             let updated = accept(&repo, &cfg, &id_or_title)?;
-            println!(
-                "Accepted ADR {:04}: {}",
-                updated.number, updated.title
-            );
+            println!("Accepted ADR {:04}: {}", updated.number, updated.title);
+        }
+        Commands::Reject { id_or_title } => {
+            let updated = reject(&repo, &cfg, &id_or_title)?;
+            println!("Rejected ADR {:04}: {}", updated.number, updated.title);
         }
         Commands::List | Commands::Index => {
             let adrs = list_and_index(&repo, &cfg)?;
             for a in &adrs {
-                println!(
-                    "{:04} | {} | {} | {}",
-                    a.number, a.title, a.status, a.date
-                );
+                println!("{:04} | {} | {} | {}", a.number, a.title, a.status, a.date);
             }
-            println!(
-                "Updated {}",
-                cfg.adr_dir.join(&cfg.index_name).display()
-            );
+            println!("Updated {}", cfg.adr_dir.join(&cfg.index_name).display());
         }
     }
 
     Ok(())
 }
-
-
