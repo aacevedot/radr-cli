@@ -58,6 +58,10 @@ mod tests {
         assert_eq!(slugify("Caps_and-Dashes"), "caps-and-dashes");
         assert_eq!(slugify("@#Weird!! Title??"), "weird-title");
         assert_eq!(slugify(""), "adr");
+        // Non-ASCII-only input collapses to default slug
+        assert_eq!(slugify("çåññøñ"), "adr");
+        // Leading/trailing dashes and separators are trimmed/condensed
+        assert_eq!(slugify(" -Hello- -World- "), "hello-world");
     }
 
     #[test]
@@ -65,5 +69,6 @@ mod tests {
         assert_eq!(parse_number("0003").unwrap(), 3);
         assert_eq!(parse_number("3").unwrap(), 3);
         assert_eq!(parse_number("0000").unwrap(), 0);
+        assert!(parse_number("abc").is_err());
     }
 }

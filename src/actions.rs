@@ -279,4 +279,98 @@ mod tests {
         let updated2 = accept(&repo, &cfg, "Pick W").unwrap();
         assert_eq!(updated2.status, "Accepted");
     }
+
+    #[test]
+    fn test_next_number_after_gap() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        std::fs::create_dir_all(&adr_dir).unwrap();
+        // Pre-create a higher numbered ADR to create a gap
+        let pre = adr_dir.join("0005-existing.md");
+        std::fs::write(&pre, "# ADR 0005: Existing\n\nBody\n").unwrap();
+
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".into(),
+            template: None,
+        };
+
+        let meta = create_new_adr(&repo, &cfg, "Next After Gap", None).unwrap();
+        assert_eq!(meta.number, 6);
+        assert!(meta.path.ends_with("0006-next-after-gap.md"));
+    }
+
+    #[test]
+    fn test_template_substitution_with_supersedes() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let tpl_path = dir.path().join("tpl.md");
+        std::fs::write(
+            &tpl_path,
+            "# ADR {{NUMBER}}: {{TITLE}}\n\nDate: {{DATE}}\nStatus: {{STATUS}}\nSupersedes: {{SUPERSEDES}}\n\nBody\n",
+        )
+        .unwrap();
+
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".into(),
+            template: Some(tpl_path.clone()),
+        };
+        let meta = create_new_adr(&repo, &cfg, "Use Template", Some(3)).unwrap();
+        let content = repo.read_string(&meta.path).unwrap();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert!(content.contains("# ADR 0001: Use Template"));
+        assert!(content.contains(&format!("Date: {}", today)));
+        assert!(content.contains("Status: Proposed"));
+        assert!(content.contains("Supersedes: 0003"));
+    }
+
+    #[test]
+    fn test_mark_superseded_inserts_when_missing() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        std::fs::create_dir_all(&adr_dir).unwrap();
+        // Old ADR without status/superseded-by lines
+        let old_path = adr_dir.join("0001-old.md");
+        std::fs::write(&old_path, "# ADR 0001: Old\n\nContext\n").unwrap();
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".into(),
+            template: None,
+        };
+
+        // Create new ADR to get number 2
+        let new_meta = create_new_adr(&repo, &cfg, "New", None).unwrap();
+        mark_superseded(&repo, &cfg, 1, new_meta.number).unwrap();
+        let updated = repo.read_string(&old_path).unwrap();
+        assert!(updated.contains("Status: Superseded by 0002"));
+        assert!(updated.contains("Superseded-by: 0002"));
+    }
+
+    #[test]
+    fn test_accept_zero_padded_and_case_insensitive_title() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".into(),
+            template: None,
+        };
+
+        let m1 = create_new_adr(&repo, &cfg, "Choose DB", None).unwrap();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        let _ = accept(&repo, &cfg, "0001").unwrap();
+        let c1 = repo.read_string(&m1.path).unwrap();
+        assert!(c1.contains("Status: Accepted"));
+        assert!(c1.contains(&format!("Date: {}", today)));
+
+        let _m2 = create_new_adr(&repo, &cfg, "Use Queue", None).unwrap();
+        let updated2 = accept(&repo, &cfg, "use queue").unwrap();
+        assert_eq!(updated2.status, "Accepted");
+    }
 }

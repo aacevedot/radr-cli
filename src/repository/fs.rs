@@ -175,4 +175,27 @@ mod tests {
         let list = repo.list().unwrap();
         assert!(list.is_empty());
     }
+
+    #[test]
+    fn test_ignores_non_matching_and_fallbacks() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        // Non-matching files are ignored
+        std::fs::write(root.join("README.md"), "hello").unwrap();
+        // Minimal ADR with only filename, parser should fallback
+        let adr_path = root.join("0007-no-status.md");
+        std::fs::write(&adr_path, "# minimal file\n\nBody\n").unwrap();
+
+        let repo = FsAdrRepository::new(root);
+        let list = repo.list().unwrap();
+        assert_eq!(list.len(), 1);
+        let a = &list[0];
+        assert_eq!(a.number, 7);
+        assert_eq!(a.title, "No Status");
+        // Status defaults to Accepted when missing
+        assert_eq!(a.status, "Accepted");
+        // Date defaults to today when missing
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert_eq!(a.date, today);
+    }
 }

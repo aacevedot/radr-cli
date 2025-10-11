@@ -142,3 +142,24 @@ fn list_outputs_lines_and_regenerates_index() {
     let index = adr_dir(tmp.path()).join("index.md");
     assert!(index.exists());
 }
+
+#[test]
+fn config_flag_changes_adr_dir_and_index_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Write YAML config overriding defaults
+    let cfg = tmp.path().join("radr.yaml");
+    std::fs::write(&cfg, b"adr_dir: adrs\nindex_name: ADRS.md\n").unwrap();
+
+    // Use --config to pick up YAML
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["--config", cfg.to_str().unwrap(), "new", "From Config"])
+        .assert()
+        .success();
+
+    let adr = tmp.path().join("adrs").join("0001-from-config.md");
+    assert!(adr.exists());
+    let index = tmp.path().join("adrs").join("ADRS.md");
+    assert!(index.exists());
+}

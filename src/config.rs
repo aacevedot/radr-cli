@@ -99,4 +99,35 @@ mod tests {
         assert_eq!(cfg.adr_dir, PathBuf::from("adrs"));
         assert_eq!(cfg.index_name, "IDX.md");
     }
+
+    #[test]
+    fn test_cli_over_env_precedence_and_template() {
+        let dir = tempdir().unwrap();
+        let json = dir.path().join("radr.json");
+        let yaml = dir.path().join("radr.yaml");
+        let tpl = dir.path().join("tpl.md");
+        std::fs::write(&tpl, "T").unwrap();
+        std::fs::write(&json, b"{\n  \"adr_dir\": \"cli_adrs\",\n  \"index_name\": \"CLI.md\",\n  \"template\": \"tpl.md\"\n}\n").unwrap();
+        std::fs::write(&yaml, b"adr_dir: env_adrs\nindex_name: ENV.md\n").unwrap();
+        // Set env to YAML, but pass CLI JSON path; CLI should win
+        std::env::set_var("RADR_CONFIG", &yaml);
+        let cfg = load_config(Some(&json)).unwrap();
+        assert_eq!(cfg.adr_dir, PathBuf::from("cli_adrs"));
+        assert_eq!(cfg.index_name, "CLI.md");
+        assert_eq!(
+            cfg.template.as_deref(),
+            Some(PathBuf::from("tpl.md").as_path())
+        );
+        std::env::remove_var("RADR_CONFIG");
+    }
+
+    #[test]
+    fn test_unsupported_extension_errors() {
+        let dir = tempdir().unwrap();
+        let bad = dir.path().join("radr.txt");
+        std::fs::write(&bad, "adr_dir=adrs").unwrap();
+        let err = load_config(Some(&bad)).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Unsupported config extension"));
+    }
 }
