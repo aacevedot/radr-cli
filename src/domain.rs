@@ -26,15 +26,27 @@ pub fn slugify(s: &str) -> String {
             }
         }
     }
-    while out.ends_with('-') { out.pop(); }
-    while out.starts_with('-') { out.remove(0); }
-    if out.is_empty() { "adr".to_string() } else { out }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    while out.starts_with('-') {
+        out.remove(0);
+    }
+    if out.is_empty() {
+        "adr".to_string()
+    } else {
+        out
+    }
 }
 
 pub fn parse_number(s: &str) -> anyhow::Result<u32> {
     let s = s.trim();
     let s = s.trim_start_matches('0');
-    if s.is_empty() { Ok(0) } else { Ok(s.parse::<u32>()?) }
+    if s.is_empty() {
+        Ok(0)
+    } else {
+        Ok(s.parse::<u32>()?)
+    }
 }
 
 #[cfg(test)]

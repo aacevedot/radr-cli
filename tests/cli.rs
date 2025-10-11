@@ -15,9 +15,7 @@ fn read(path: impl Into<PathBuf>) -> String {
 fn new_creates_proposed_and_index() {
     let tmp = tempfile::tempdir().unwrap();
     let mut cmd = assert_cmd::Command::cargo_bin("radr").unwrap();
-    cmd.current_dir(tmp.path())
-        .arg("new")
-        .arg("First ADR");
+    cmd.current_dir(tmp.path()).arg("new").arg("First ADR");
     cmd.assert().success();
 
     let adr0 = adr_dir(&tmp.path().to_path_buf()).join("0001-first-adr.md");
@@ -39,14 +37,16 @@ fn accept_by_id_and_title_updates_status_and_date() {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
     // new
-    assert_cmd::Command::cargo_bin("radr").unwrap()
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
         .current_dir(tmp.path())
         .args(["new", "Choose DB"])
         .assert()
         .success();
 
     // accept by id
-    assert_cmd::Command::cargo_bin("radr").unwrap()
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
         .current_dir(tmp.path())
         .args(["accept", "1"])
         .assert()
@@ -59,13 +59,15 @@ fn accept_by_id_and_title_updates_status_and_date() {
     assert!(c1.contains(&format!("Date: {}", today)));
 
     // new second and accept by title
-    assert_cmd::Command::cargo_bin("radr").unwrap()
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
         .current_dir(tmp.path())
         .args(["new", "Use Queue"])
         .assert()
         .success();
 
-    assert_cmd::Command::cargo_bin("radr").unwrap()
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
         .current_dir(tmp.path())
         .args(["accept", "Use Queue"])
         .assert()
@@ -81,14 +83,16 @@ fn supersede_marks_old_and_new_proposed_and_updates_index() {
     let tmp = tempfile::tempdir().unwrap();
 
     // create first
-    assert_cmd::Command::cargo_bin("radr").unwrap()
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
         .current_dir(tmp.path())
         .args(["new", "Choose X"])
         .assert()
         .success();
 
     // supersede
-    assert_cmd::Command::cargo_bin("radr").unwrap()
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
         .current_dir(tmp.path())
         .args(["supersede", "1", "Choose Y"])
         .assert()
@@ -119,7 +123,8 @@ fn list_outputs_lines_and_regenerates_index() {
 
     // create two
     for title in ["One", "Two"] {
-        assert_cmd::Command::cargo_bin("radr").unwrap()
+        assert_cmd::Command::cargo_bin("radr")
+            .unwrap()
             .current_dir(tmp.path())
             .args(["new", title])
             .assert()
@@ -129,10 +134,12 @@ fn list_outputs_lines_and_regenerates_index() {
     // list
     let mut cmd = assert_cmd::Command::cargo_bin("radr").unwrap();
     cmd.current_dir(tmp.path()).arg("list");
-    cmd.assert().success().stdout(predicate::str::contains("0001 | One")).stdout(predicate::str::contains("0002 | Two"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("0001 | One"))
+        .stdout(predicate::str::contains("0002 | Two"));
 
     // index exists
     let index = adr_dir(&tmp.path().to_path_buf()).join("index.md");
     assert!(index.exists());
 }
-

@@ -1,4 +1,4 @@
-use std::{env, ffi::OsStr, path::PathBuf, fs};
+use std::{env, ffi::OsStr, fs, path::PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
@@ -45,16 +45,13 @@ pub fn load_config(cli_path: Option<&PathBuf>) -> Result<Config> {
             ".radrrc.yml",
             ".radrrc.json",
         ];
-        candidates
-            .iter()
-            .map(PathBuf::from)
-            .find(|p| p.exists())
+        candidates.iter().map(PathBuf::from).find(|p| p.exists())
     };
 
     if let Some(p) = path {
         let ext = p.extension().and_then(OsStr::to_str).unwrap_or("");
-        let contents = fs::read_to_string(&p)
-            .with_context(|| format!("Reading config at {}", p.display()))?;
+        let contents =
+            fs::read_to_string(&p).with_context(|| format!("Reading config at {}", p.display()))?;
         let fc: FileConfig = match ext.to_ascii_lowercase().as_str() {
             "json" => serde_json::from_str(&contents)
                 .with_context(|| format!("Parsing JSON config at {}", p.display()))?,
@@ -65,9 +62,15 @@ pub fn load_config(cli_path: Option<&PathBuf>) -> Result<Config> {
             other => return Err(anyhow!("Unsupported config extension: {}", other)),
         };
 
-        if let Some(d) = fc.adr_dir { cfg.adr_dir = d; }
-        if let Some(i) = fc.index_name { cfg.index_name = i; }
-        if let Some(t) = fc.template { cfg.template = Some(t); }
+        if let Some(d) = fc.adr_dir {
+            cfg.adr_dir = d;
+        }
+        if let Some(i) = fc.index_name {
+            cfg.index_name = i;
+        }
+        if let Some(t) = fc.template {
+            cfg.template = Some(t);
+        }
     }
 
     Ok(cfg)
@@ -76,8 +79,8 @@ pub fn load_config(cli_path: Option<&PathBuf>) -> Result<Config> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::io::Write;
+    use tempfile::tempdir;
 
     #[test]
     fn test_default_config() {
@@ -97,4 +100,3 @@ mod tests {
         assert_eq!(cfg.index_name, "IDX.md");
     }
 }
-
