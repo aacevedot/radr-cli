@@ -7,7 +7,7 @@
 **Install (cargo)**
 
 - Requires: Rust toolchain (`cargo` + `rustc`).
-- Install: `cargo install radr`
+- Install: `cargo install radr-cli`
 - Run: `radr --help`
 
 **Install (local)**

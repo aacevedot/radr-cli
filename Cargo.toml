@@ -1,5 +1,5 @@
 [package]
-name = "radr"
+name = "radr-cli"
 version = "0.1.0"
 edition = "2021"
 description = "Rust CLI to manage Architecture Decision Records (ADRs)"
@@ -18,6 +18,13 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 toml = "0.9"
+
+[lib]
+name = "radr"
+
+[[bin]]
+name = "radr"
+path = "src/main.rs"
 
 [dev-dependencies]
 tempfile = "3.10"
