@@ -3,7 +3,11 @@ name = "radr"
 version = "0.1.0"
 edition = "2021"
 description = "Rust CLI to manage Architecture Decision Records (ADRs)"
-license = "MIT OR Apache-2.0"
+license-file = "LICENSE"
+repository = "https://github.com/aacevedot/radr"
+readme = "README.md"
+keywords = ["adr", "architecture", "docs"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0"
