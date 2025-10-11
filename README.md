@@ -46,7 +46,7 @@ Command Line Interface (CLI) application to manage Architecture Decision Records
   - `index_name` (string): Name of the index file. Default: `index.md`.
   - `template` (string): Optional path to a custom template.
 
-Examples:
+### Examples
 
 - TOML (`radr.toml`)
 
