@@ -2,7 +2,7 @@
 name = "radr-cli"
 version = "0.1.0"
 edition = "2021"
-description = "Rust CLI to manage Architecture Decision Records (ADRs)"
+description = "CLI application to manage Architecture Decision Records (ADRs)"
 license = "MIT"
 repository = "https://github.com/aacevedot/radr-cli"
 readme = "README.md"
