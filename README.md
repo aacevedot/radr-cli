@@ -1,24 +1,31 @@
-**RADR CLI**
+# RADR CLI
+
+Command Line Interface (CLI) application to manage Architecture Decision Records (ADRs)
+
+## Overview
 
 - Purpose: Manage Architecture Decision Records (ADRs) from the command line.
-- Commands: create, supersede, list, and maintain an `index.md`.
-- Config: JSON, YAML, or TOML file to choose ADR location and template.
+- Commands: create, supersede, list, accept, reject, and maintain an `index.md` file.
+- Supported config formats: JSON, YAML, or TOML file to choose ADR location and template.
 
-**Install (cargo)**
+## Installation
+
+### Install (via cargo)
 
 - Requires: Rust toolchain (`cargo` + `rustc`).
 - Install: `cargo install radr-cli`
 - Run: `radr --help`
 
-**Install (local)**
+### Install (via source)
 
+- Clone and navigate to the project
 - Build from source: `cargo build --release`
 - Install locally: `cargo install --path .`
 - Run built binary: `target/release/radr --help`
 
-**Usage**
+## Usage
 
-- New ADR: `radr new "Adopt PostgreSQL"` (default status: Accepted)
+- New ADR: `radr new "Adopt PostgreSQL"` (default status: Proposed)
 - New ADR with status: `radr new "Switch CI" --status Proposed`
 - Supersede ADR: `radr supersede 3 "Move to Managed PostgreSQL"`
 - Supersede with force: `radr supersede 3 "Redo Supersede" --force` (allows superseding an ADR even if it is already superseded)
@@ -26,12 +33,12 @@
 - List + regenerate index: `radr list` or `radr index`
 - Use config: `radr --config radr.toml list` or `RADR_CONFIG=radr.yaml radr list`
 
-**Index**
+## Index
 
 - Written to `<adr_dir>/index.md`.
 - Lists all ADRs (active and superseded) with number, title, status, and date.
 
-**Config**
+## Config
 
 - Search order: `--config` path → `RADR_CONFIG` env → local files `radr.toml|yaml|yml|json` or `.radrrc.*`.
 - Fields:
@@ -67,12 +74,12 @@ template: adr_template.md
 }
 ```
 
-**Template**
+## Template
 
 - If `template` is set, these placeholders are interpolated:
   - `{{NUMBER}}`, `{{TITLE}}`, `{{DATE}}`, `{{STATUS}}`, `{{SUPERSEDES}}` (empty if none)
 
-**ADR Format**
+## ADR Format
 
 - Default file format created:
 
@@ -94,7 +101,7 @@ Supersedes: 0003
   - `Status: Superseded by 000X`
   - `Superseded-by: 000X`
 
-**Notes**
+## Notes
 
 - Filenames are `NNNN-title-slug.md` with zero-padded numbering.
 - `radr list` regenerates the index and prints a terse table to stdout.
