@@ -19,11 +19,9 @@ pub fn slugify(s: &str) -> String {
         if c.is_ascii_alphanumeric() {
             out.push(c);
             last_dash = false;
-        } else if c.is_ascii_whitespace() || c == '-' || c == '_' {
-            if !last_dash {
-                out.push('-');
-                last_dash = true;
-            }
+        } else if (c.is_ascii_whitespace() || c == '-' || c == '_') && !last_dash {
+            out.push('-');
+            last_dash = true;
         }
     }
     while out.ends_with('-') {

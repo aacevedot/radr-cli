@@ -44,23 +44,23 @@ impl FsAdrRepository {
                     title = line[idx + 2..].trim().to_string();
                 }
             }
-            if line.starts_with("Title:") {
-                title = line[6..].trim().to_string();
+            if let Some(stripped) = line.strip_prefix("Title:") {
+                title = stripped.trim().to_string();
             }
-            if line.starts_with("Date:") {
-                date = line[5..].trim().to_string();
+            if let Some(stripped) = line.strip_prefix("Date:") {
+                date = stripped.trim().to_string();
             }
-            if line.starts_with("Status:") {
-                status = line[7..].trim().to_string();
+            if let Some(stripped) = line.strip_prefix("Status:") {
+                status = stripped.trim().to_string();
             }
-            if line.starts_with("Supersedes:") {
-                let v = line[11..].trim();
+            if let Some(stripped) = line.strip_prefix("Supersedes:") {
+                let v = stripped.trim();
                 if let Ok(n) = v.parse::<u32>() {
                     supersedes = Some(n);
                 }
             }
-            if line.starts_with("Superseded-by:") {
-                let v = line[14..].trim();
+            if let Some(stripped) = line.strip_prefix("Superseded-by:") {
+                let v = stripped.trim();
                 if let Ok(n) = v.parse::<u32>() {
                     superseded_by = Some(n);
                 }

@@ -1,9 +1,8 @@
-use assert_cmd::cargo::CommandCargoExt;
 use predicates::prelude::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-fn adr_dir(tmp: &PathBuf) -> PathBuf {
+fn adr_dir(tmp: &Path) -> PathBuf {
     tmp.join("docs").join("adr")
 }
 
@@ -18,13 +17,13 @@ fn new_creates_proposed_and_index() {
     cmd.current_dir(tmp.path()).arg("new").arg("First ADR");
     cmd.assert().success();
 
-    let adr0 = adr_dir(&tmp.path().to_path_buf()).join("0001-first-adr.md");
+    let adr0 = adr_dir(tmp.path()).join("0001-first-adr.md");
     assert!(adr0.exists());
     let content = read(&adr0);
     assert!(content.contains("Status: Proposed"));
     assert!(content.contains("Date:"));
 
-    let index = adr_dir(&tmp.path().to_path_buf()).join("index.md");
+    let index = adr_dir(tmp.path()).join("index.md");
     assert!(index.exists());
     let idx = read(&index);
     assert!(idx.contains("0001: First ADR"));
@@ -53,7 +52,7 @@ fn accept_by_id_and_title_updates_status_and_date() {
         .success()
         .stdout(predicate::str::contains("Accepted ADR 0001"));
 
-    let adr1 = adr_dir(&tmp.path().to_path_buf()).join("0001-choose-db.md");
+    let adr1 = adr_dir(tmp.path()).join("0001-choose-db.md");
     let c1 = read(&adr1);
     assert!(c1.contains("Status: Accepted"));
     assert!(c1.contains(&format!("Date: {}", today)));
@@ -73,7 +72,7 @@ fn accept_by_id_and_title_updates_status_and_date() {
         .assert()
         .success();
 
-    let adr2 = adr_dir(&tmp.path().to_path_buf()).join("0002-use-queue.md");
+    let adr2 = adr_dir(tmp.path()).join("0002-use-queue.md");
     let c2 = read(&adr2);
     assert!(c2.contains("Status: Accepted"));
 }
@@ -98,8 +97,8 @@ fn supersede_marks_old_and_new_proposed_and_updates_index() {
         .assert()
         .success();
 
-    let old = adr_dir(&tmp.path().to_path_buf()).join("0001-choose-x.md");
-    let new_adr = adr_dir(&tmp.path().to_path_buf()).join("0002-choose-y.md");
+    let old = adr_dir(tmp.path()).join("0001-choose-x.md");
+    let new_adr = adr_dir(tmp.path()).join("0002-choose-y.md");
     assert!(old.exists());
     assert!(new_adr.exists());
 
@@ -111,7 +110,7 @@ fn supersede_marks_old_and_new_proposed_and_updates_index() {
     assert!(new_c.contains("Supersedes: 0001"));
     assert!(new_c.contains("Status: Proposed"));
 
-    let index = adr_dir(&tmp.path().to_path_buf()).join("index.md");
+    let index = adr_dir(tmp.path()).join("index.md");
     let idx = read(&index);
     assert!(idx.contains("0001: Choose X"));
     assert!(idx.contains("0002: Choose Y"));
@@ -140,6 +139,6 @@ fn list_outputs_lines_and_regenerates_index() {
         .stdout(predicate::str::contains("0002 | Two"));
 
     // index exists
-    let index = adr_dir(&tmp.path().to_path_buf()).join("index.md");
+    let index = adr_dir(tmp.path()).join("index.md");
     assert!(index.exists());
 }

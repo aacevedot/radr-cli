@@ -29,9 +29,7 @@ pub fn create_new_adr<R: AdrRepository>(
             .replace("{{STATUS}}", "Proposed")
             .replace(
                 "{{SUPERSEDES}}",
-                &supersedes
-                    .map(|n| format!("{:04}", n))
-                    .unwrap_or_else(|| "".to_string()),
+                &supersedes.map(|n| format!("{:04}", n)).unwrap_or_default(),
             )
     } else {
         let mut header = format!(
@@ -179,7 +177,7 @@ pub fn accept<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
     repo.write_string(&target.path, &content)?;
 
     // refresh index and return updated meta
-    let mut adrs2 = repo.list()?;
+    let adrs2 = repo.list()?;
     write_index(repo, cfg, &adrs2)?;
     let updated = adrs2
         .into_iter()
