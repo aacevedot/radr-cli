@@ -8,72 +8,57 @@ env:
 
 tasks:
   default:
-    desc: Build the project in debug mode
-    cmds:
-      - task: build
+    cmd: task --list
 
   build:
     desc: Build (debug)
-    cmds:
-      - cargo build
+    cmd: cargo build
+
+  clean:
+    desc: Clean build artifacts
+    cmd: cargo clean
 
   release:
     desc: Build (release)
-    cmds:
-      - cargo build --release
+    cmd: cargo build --release
 
   fmt:
     desc: Format code with rustfmt
-    cmds:
-      - cargo fmt --all
+    cmd: cargo fmt --all
 
   clippy:
     desc: Lint with clippy (deny warnings)
-    cmds:
-      - cargo clippy --all-targets --all-features -- -D warnings
+    cmd: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
     desc: Run unit tests
-    cmds:
-      - cargo test --all
+    cmd: cargo test --all
 
   run:
     desc: Run the CLI with arbitrary args
     vars:
       ARGS: "--help"
-    cmds:
-      - cargo run -- {{ .ARGS }}
+    cmd: cargo run -- {{ .ARGS }}
 
   # Convenience tasks for common commands
-  new:
+  cmd:new:
     desc: "Create a new ADR (vars: TITLE, STATUS)"
     vars:
       TITLE: "Example ADR"
       STATUS: "Accepted"
-    cmds:
-      - cargo run -- new "{{ .TITLE }}" --status "{{ .STATUS }}"
+    cmd: cargo run -- new "{{ .TITLE }}" --status "{{ .STATUS }}"
 
-  supersede:
+  cmd:supersede:
     desc: "Create an ADR superseding another (vars: ID, TITLE)"
     vars:
       ID: "1"
       TITLE: "Superseding ADR"
-    cmds:
-      - cargo run -- supersede {{ .ID }} "{{ .TITLE }}"
+    cmd: cargo run -- supersede {{ .ID }} "{{ .TITLE }}"
 
-  list:
+  cmd:list:
     desc: List ADRs and regenerate index
-    cmds:
-      - cargo run -- list
+    cmd: cargo run -- list
 
-  index:
+  cmd:index:
     desc: Regenerate index.md
-    cmds:
-      - cargo run -- index
-
-  clean:
-    desc: Clean build artifacts
-    cmds:
-      - cargo clean
-
-
+    cmd: cargo run -- index
