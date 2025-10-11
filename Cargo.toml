@@ -1,6 +1,6 @@
 [package]
 name = "radr-cli"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "CLI application to manage Architecture Decision Records (ADRs)"
 license = "MIT"
