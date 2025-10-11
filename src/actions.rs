@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::domain::{parse_number, slugify, AdrMeta};
 use crate::repository::{idx_path, AdrRepository};
+use std::collections::HashMap;
 
 pub fn create_new_adr<R: AdrRepository>(
     repo: &R,
@@ -174,11 +175,27 @@ pub fn accept<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
 fn write_index<R: AdrRepository>(repo: &R, cfg: &Config, adrs: &[AdrMeta]) -> Result<()> {
     let mut content = String::new();
     content.push_str("# Architecture Decision Records\n\n");
+    // Build map from number -> filename for linking
+    let mut by_number: HashMap<u32, String> = HashMap::new();
+    for a in adrs {
+        if let Some(fname) = a.path.file_name().and_then(OsStr::to_str) {
+            by_number.insert(a.number, fname.to_string());
+        }
+    }
     for a in adrs {
         let fname = a.path.file_name().and_then(OsStr::to_str).unwrap_or("");
+        let status_display = if let Some(n) = a.superseded_by {
+            if let Some(target) = by_number.get(&n) {
+                format!("Superseded by [{:04}]({})", n, target)
+            } else {
+                format!("Superseded by {:04}", n)
+            }
+        } else {
+            a.status.clone()
+        };
         content.push_str(&format!(
             "- [{:04}: {}]({}) — Status: {} — Date: {}\n",
-            a.number, a.title, fname, a.status, a.date
+            a.number, a.title, fname, status_display, a.date
         ));
     }
     content.push('\n');
@@ -238,6 +255,27 @@ mod tests {
         let contents = repo.read_string(&old_path).unwrap();
         assert!(contents.contains("Status: Superseded by 0002"));
         assert!(contents.contains("Superseded-by: 0002"));
+    }
+
+    #[test]
+    fn test_index_links_to_superseding_adr() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".to_string(),
+            template: None,
+        };
+
+        let old = create_new_adr(&repo, &cfg, "Choose X", None).unwrap();
+        let new_meta = create_new_adr(&repo, &cfg, "Choose Y", Some(old.number)).unwrap();
+        mark_superseded(&repo, &cfg, old.number, new_meta.number).unwrap();
+
+        let index = cfg.adr_dir.join("index.md");
+        let idx = repo.read_string(&index).unwrap();
+        // Ensure the old ADR's status contains a link to the new ADR file
+        assert!(idx.contains("Status: Superseded by [0002](0002-choose-y.md)"));
     }
 
     #[test]
