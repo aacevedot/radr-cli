@@ -1,12 +1,13 @@
 use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 
 use radr::actions::{accept, create_new_adr, list_and_index, mark_superseded, reject};
 use radr::config::load_config;
 use radr::domain::parse_number;
+use radr::repository::AdrRepository;
 use radr::{Config, FsAdrRepository};
 
 #[derive(Parser, Debug)]
@@ -33,6 +34,9 @@ enum Commands {
         id: String,
         /// Title for the new ADR
         title: String,
+        /// Force superseding even if already superseded
+        #[arg(long)]
+        force: bool,
     },
     /// Accept an ADR by id or title
     Accept {
@@ -71,8 +75,28 @@ fn main() -> Result<()> {
                 meta.path.display()
             );
         }
-        Commands::Supersede { id, title } => {
+        Commands::Supersede { id, title, force } => {
             let old_num = parse_number(&id)?;
+            // Pre-check: if target ADR is already superseded, print helpful message and exit with error
+            if !force {
+                if let Ok(existing) = repo.list() {
+                    if let Some(old) = existing.iter().find(|a| a.number == old_num) {
+                        if let Some(sb) = old.superseded_by {
+                            let sb_title = existing
+                                .iter()
+                                .find(|a| a.number == sb)
+                                .map(|a| a.title.as_str())
+                                .unwrap_or("");
+                            eprintln!(
+                                "{:04}: {} is already superseded by {:04}: {}",
+                                old.number, old.title, sb, sb_title
+                            );
+                            return Err(anyhow!("ADR already superseded"));
+                        }
+                    }
+                }
+            }
+
             let new_meta = create_new_adr(&repo, &cfg, &title, Some(old_num))?;
             mark_superseded(&repo, &cfg, old_num, new_meta.number)?;
             println!(

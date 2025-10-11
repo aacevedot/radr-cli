@@ -15,6 +15,7 @@
 - New ADR: `radr new "Adopt PostgreSQL"` (default status: Accepted)
 - New ADR with status: `radr new "Switch CI" --status Proposed`
 - Supersede ADR: `radr supersede 3 "Move to Managed PostgreSQL"`
+- Supersede with force: `radr supersede 3 "Redo Supersede" --force` (allows superseding an ADR even if it is already superseded)
 - Reject ADR: `radr reject 3` or `radr reject "Adopt PostgreSQL"`
 - List + regenerate index: `radr list` or `radr index`
 - Use config: `radr --config radr.toml list` or `RADR_CONFIG=radr.yaml radr list`

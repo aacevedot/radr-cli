@@ -190,8 +190,7 @@ pub fn reject<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
             .ok_or_else(|| anyhow!("ADR not found by id: {}", n))?,
         _ => {
             let lower = id_or_title.trim().to_ascii_lowercase();
-            adrs
-                .into_iter()
+            adrs.into_iter()
                 .find(|a| a.title.to_ascii_lowercase() == lower)
                 .ok_or_else(|| anyhow!("ADR not found by id or title: {}", id_or_title))?
         }
@@ -510,7 +509,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let adr_dir = dir.path().join("adrs");
         let repo = FsAdrRepository::new(&adr_dir);
-        let cfg = Config { adr_dir: adr_dir.clone(), index_name: "index.md".into(), template: None };
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".into(),
+            template: None,
+        };
 
         let m1 = create_new_adr(&repo, &cfg, "Reject Me", None).unwrap();
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();

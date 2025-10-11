@@ -213,6 +213,81 @@ fn supersede_nonexistent_returns_error() {
 }
 
 #[test]
+fn supersede_already_superseded_shows_message_and_fails() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // create first
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Choose X"])
+        .assert()
+        .success();
+
+    // supersede once (1 -> 2)
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "1", "Choose Y"])
+        .assert()
+        .success();
+
+    // try to supersede ADR 1 again; should fail with a helpful message
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "1", "Choose Z"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "0001: Choose X is already superseded by 0002: Choose Y",
+        ));
+
+    // Ensure no ADR 3 was created by the failed attempt
+    assert!(!adr_dir(tmp.path()).join("0003-choose-z.md").exists());
+}
+
+#[test]
+fn supersede_already_superseded_force_allows_and_updates() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // create first
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Choose X"])
+        .assert()
+        .success();
+
+    // supersede once (1 -> 2)
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "1", "Choose Y"])
+        .assert()
+        .success();
+
+    // supersede ADR 1 again with --force; should succeed and create ADR 3
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "1", "Choose Z", "--force"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Created ADR 0003 superseding 0001",
+        ));
+
+    // Check ADR 3 exists
+    assert!(adr_dir(tmp.path()).join("0003-choose-z.md").exists());
+
+    // Old ADR 1 should now show superseded by 0003
+    let old = adr_dir(tmp.path()).join("0001-choose-x.md");
+    let c = read(&old);
+    assert!(c.contains("Status: Superseded by 0003"));
+}
+
+#[test]
 fn reject_by_id_and_title_updates_status_and_date() {
     let tmp = tempfile::tempdir().unwrap();
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
