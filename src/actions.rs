@@ -21,6 +21,15 @@ pub fn create_new_adr<R: AdrRepository>(
     let path = repo.adr_dir().join(filename);
     let date = Local::now().format("%Y-%m-%d").to_string();
 
+    // Resolve supersedes display: link to existing ADR filename when possible
+    let supersedes_display = supersedes.and_then(|n| {
+        adrs.iter()
+            .find(|a| a.number == n)
+            .and_then(|a| a.path.file_name().and_then(OsStr::to_str))
+            .map(|fname| format!("[{:04}]({})", n, fname))
+            .or_else(|| Some(format!("{:04}", n)))
+    });
+
     let content = if let Some(tpl_path) = &cfg.template {
         let tpl = std::fs::read_to_string(tpl_path)
             .with_context(|| format!("Reading template at {}", tpl_path.display()))?;
@@ -30,15 +39,15 @@ pub fn create_new_adr<R: AdrRepository>(
             .replace("{{STATUS}}", "Proposed")
             .replace(
                 "{{SUPERSEDES}}",
-                &supersedes.map(|n| format!("{:04}", n)).unwrap_or_default(),
+                supersedes_display.as_deref().unwrap_or_default(),
             )
     } else {
         let mut header = format!(
             "# ADR {:04}: {}\n\nDate: {}\nStatus: Proposed\n",
             next, title, date
         );
-        if let Some(n) = supersedes {
-            header.push_str(&format!("Supersedes: {:04}\n", n));
+        if let Some(sup) = &supersedes_display {
+            header.push_str(&format!("Supersedes: {}\n", sup));
         }
         header.push_str(
             "\n## Context\n\nDescribe the context and forces at play.\n\n## Decision\n\nState the decision that was made and why.\n\n## Consequences\n\nList the trade-offs and follow-ups.\n",

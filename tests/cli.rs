@@ -107,7 +107,7 @@ fn supersede_marks_old_and_new_proposed_and_updates_index() {
     assert!(old_c.contains("Superseded-by: 0002"));
 
     let new_c = read(&new_adr);
-    assert!(new_c.contains("Supersedes: 0001"));
+    assert!(new_c.contains("Supersedes: [0001](0001-choose-x.md)"));
     assert!(new_c.contains("Status: Proposed"));
 
     let index = adr_dir(tmp.path()).join("index.md");
