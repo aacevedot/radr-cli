@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
+use radr::actions::{accept, create_new_adr, list_and_index, mark_superseded};
 use radr::config::load_config;
 use radr::domain::parse_number;
-use radr::usecase::{accept, create_new_adr, list_and_index, mark_superseded};
 use radr::{Config, FsAdrRepository};
 
 #[derive(Parser, Debug)]
