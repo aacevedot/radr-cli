@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 use regex::Regex;
 use std::{
@@ -128,7 +128,8 @@ impl AdrRepository for FsAdrRepository {
         if !self.root.exists() {
             return Ok(res);
         }
-        let re = Regex::new(r"^\d{4}-.*\.md$").unwrap();
+        let re = Regex::new(r"^\d{4}-.*\.md$")
+            .map_err(|e| anyhow!("invalid ADR filename regex: {}", e))?;
         for entry in fs::read_dir(&self.root)
             .with_context(|| format!("Reading ADR directory at {}", self.root.display()))?
         {

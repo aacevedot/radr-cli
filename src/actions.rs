@@ -136,9 +136,10 @@ pub fn accept<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
     let adrs = repo.list()?;
     // Try by number, else by title (case-insensitive exact match)
     let target = match parse_number(id_or_title) {
-        Ok(n) if adrs.iter().any(|a| a.number == n) => {
-            adrs.into_iter().find(|a| a.number == n).unwrap()
-        }
+        Ok(n) if adrs.iter().any(|a| a.number == n) => adrs
+            .into_iter()
+            .find(|a| a.number == n)
+            .ok_or_else(|| anyhow!("ADR not found by id: {}", n))?,
         _ => {
             let lower = id_or_title.trim().to_ascii_lowercase();
             adrs.into_iter()
