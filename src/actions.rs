@@ -68,29 +68,13 @@ pub fn mark_superseded<R: AdrRepository>(
     old_number: u32,
     new_number: u32,
 ) -> Result<()> {
-    // Find old ADR by number
-    let mut target_path: Option<PathBuf> = None;
-    for entry in std::fs::read_dir(repo.adr_dir())? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(OsStr::to_str) == Some("md") {
-            // extract number from filename
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                if let Some(num_part) = stem.split('-').next() {
-                    if let Ok(num) = num_part.parse::<u32>() {
-                        if num == old_number {
-                            target_path = Some(path);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let Some(path) = target_path else {
-        return Err(anyhow!("Could not find ADR {:04} to supersede", old_number));
-    };
+    // Locate ADR by listing metadata to be robust even if dir missing
+    let adrs = repo.list()?;
+    let path: PathBuf = adrs
+        .into_iter()
+        .find(|a| a.number == old_number)
+        .map(|a| a.path)
+        .ok_or_else(|| anyhow!("Could not find ADR {:04} to supersede", old_number))?;
 
     let contents = repo.read_string(&path)?;
     let mut lines: Vec<String> = contents.lines().map(|s| s.to_string()).collect();
@@ -279,6 +263,52 @@ mod tests {
         let _m2 = create_new_adr(&repo, &cfg, "Pick W", None).unwrap();
         let updated2 = accept(&repo, &cfg, "Pick W").unwrap();
         assert_eq!(updated2.status, "Accepted");
+    }
+
+    #[test]
+    fn test_mark_superseded_not_found_errors() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".to_string(),
+            template: None,
+        };
+        // No ADR 0001 exists, should error
+        let err = mark_superseded(&repo, &cfg, 1, 2).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Could not find ADR 0001"));
+    }
+
+    #[test]
+    fn test_accept_not_found_errors() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".to_string(),
+            template: None,
+        };
+        let err = accept(&repo, &cfg, "999").unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("ADR not found"));
+    }
+
+    #[test]
+    fn test_create_with_missing_template_errors() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".into(),
+            template: Some(dir.path().join("missing.tpl")),
+        };
+        let err = create_new_adr(&repo, &cfg, "X", None).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Reading template"));
     }
 
     #[test]

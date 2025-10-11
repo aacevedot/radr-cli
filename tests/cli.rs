@@ -163,3 +163,84 @@ fn config_flag_changes_adr_dir_and_index_name() {
     let index = tmp.path().join("adrs").join("ADRS.md");
     assert!(index.exists());
 }
+
+#[test]
+fn env_config_overrides_local_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    // local toml
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='local'\nindex_name='LOCAL.md'\n",
+    )
+    .unwrap();
+    // env yaml
+    let env_yaml = tmp.path().join("radr.yaml");
+    std::fs::write(&env_yaml, b"adr_dir: env\nindex_name: ENV.md\n").unwrap();
+
+    let mut cmd = assert_cmd::Command::cargo_bin("radr").unwrap();
+    cmd.current_dir(tmp.path())
+        .env("RADR_CONFIG", env_yaml)
+        .args(["new", "From Env"])
+        .assert()
+        .success();
+
+    let adr = tmp.path().join("env").join("0001-from-env.md");
+    assert!(adr.exists());
+    let idx = tmp.path().join("env").join("ENV.md");
+    assert!(idx.exists());
+}
+
+#[test]
+fn accept_nonexistent_returns_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["accept", "9999"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn supersede_nonexistent_returns_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "9999", "Y"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn template_via_config_is_applied() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Write template and config
+    let tpl = tmp.path().join("tpl.md");
+    std::fs::write(
+        &tpl,
+        "# ADR {{NUMBER}}: {{TITLE}}\n\nDate: {{DATE}}\nStatus: {{STATUS}}\n\nTEMPLATE\n",
+    )
+    .unwrap();
+    let cfg = tmp.path().join("radr.toml");
+    std::fs::write(
+        &cfg,
+        format!(
+            "adr_dir='adrs'\nindex_name='index.md'\ntemplate='{}'\n",
+            tpl.display()
+        ),
+    )
+    .unwrap();
+
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "From Template"])
+        .assert()
+        .success();
+
+    let adr = tmp.path().join("adrs").join("0001-from-template.md");
+    let c = read(&adr);
+    assert!(c.contains("TEMPLATE"));
+    assert!(c.contains("Status: Proposed"));
+}

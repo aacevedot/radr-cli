@@ -199,4 +199,41 @@ mod tests {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         assert_eq!(a.date, today);
     }
+
+    #[test]
+    fn test_parse_fields_from_content() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let p = root.join("0010-detailed.md");
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let content = format!(
+            "# ADR 0010: Header Title\n\nTitle: Overridden Title\nDate: {}\nStatus: Proposed\nSupersedes: 0002\nSuperseded-by: 0011\n\nBody\n",
+            today
+        );
+        std::fs::write(&p, content).unwrap();
+        let repo = FsAdrRepository::new(root);
+        let list = repo.list().unwrap();
+        assert_eq!(list.len(), 1);
+        let a = &list[0];
+        assert_eq!(a.number, 10);
+        // Title: line should override header
+        assert_eq!(a.title, "Overridden Title");
+        assert_eq!(a.date, today);
+        assert_eq!(a.status, "Proposed");
+        assert_eq!(a.supersedes, Some(2));
+        assert_eq!(a.superseded_by, Some(11));
+    }
+
+    #[test]
+    fn test_untitled_when_empty_slug() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let p = root.join("0008-.md");
+        std::fs::write(&p, "# No header number or title\n").unwrap();
+        let repo = FsAdrRepository::new(root);
+        let list = repo.list().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].title, "Untitled");
+        assert_eq!(list[0].number, 8);
+    }
 }

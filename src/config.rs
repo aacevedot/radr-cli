@@ -130,4 +130,38 @@ mod tests {
         let msg = format!("{}", err);
         assert!(msg.contains("Unsupported config extension"));
     }
+
+    #[test]
+    fn test_env_over_local_and_defaults() {
+        let dir = tempdir().unwrap();
+        // Write local toml
+        let toml_path = dir.path().join("radr.toml");
+        let mut f = std::fs::File::create(&toml_path).unwrap();
+        writeln!(f, "adr_dir='local'\nindex_name='LOCAL.md'").unwrap();
+        // Write env yaml
+        let yaml_path = dir.path().join("radr.yaml");
+        std::fs::write(&yaml_path, b"adr_dir: env\nindex_name: ENV.md\n").unwrap();
+        // defaults before setting cwd/env
+        let d = Config::default();
+        assert_eq!(d.adr_dir, PathBuf::from("docs/adr"));
+        assert_eq!(d.index_name, "index.md");
+        // Now set cwd and env; env should win when no CLI provided
+        std::env::set_current_dir(dir.path()).unwrap();
+        std::env::set_var("RADR_CONFIG", yaml_path.to_str().unwrap());
+        let cfg = load_config(None).unwrap();
+        assert_eq!(cfg.adr_dir, PathBuf::from("env"));
+        assert_eq!(cfg.index_name, "ENV.md");
+        std::env::remove_var("RADR_CONFIG");
+    }
+
+    #[test]
+    fn test_invalid_config_content_errors() {
+        let dir = tempdir().unwrap();
+        let bad_toml = dir.path().join("radr.toml");
+        // invalid toml (missing equals)
+        std::fs::write(&bad_toml, "adr_dir 'oops'").unwrap();
+        let err = load_config(Some(&bad_toml)).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Parsing TOML config"));
+    }
 }
