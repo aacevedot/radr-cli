@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
-use radr::actions::{accept, create_new_adr, list_and_index, mark_superseded};
+use radr::actions::{accept, create_new_adr, list_and_index, mark_superseded, reject};
 use radr::config::load_config;
 use radr::domain::parse_number;
 use radr::{Config, FsAdrRepository};
@@ -36,6 +36,11 @@ enum Commands {
     },
     /// Accept an ADR by id or title
     Accept {
+        /// ADR id (number) or exact title
+        id_or_title: String,
+    },
+    /// Reject an ADR by id or title
+    Reject {
         /// ADR id (number) or exact title
         id_or_title: String,
     },
@@ -78,6 +83,10 @@ fn main() -> Result<()> {
         Commands::Accept { id_or_title } => {
             let updated = accept(&repo, &cfg, &id_or_title)?;
             println!("Accepted ADR {:04}: {}", updated.number, updated.title);
+        }
+        Commands::Reject { id_or_title } => {
+            let updated = reject(&repo, &cfg, &id_or_title)?;
+            println!("Rejected ADR {:04}: {}", updated.number, updated.title);
         }
         Commands::List | Commands::Index => {
             let adrs = list_and_index(&repo, &cfg)?;

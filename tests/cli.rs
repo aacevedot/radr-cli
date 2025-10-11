@@ -213,6 +213,53 @@ fn supersede_nonexistent_returns_error() {
 }
 
 #[test]
+fn reject_by_id_and_title_updates_status_and_date() {
+    let tmp = tempfile::tempdir().unwrap();
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+    // new
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Discard Me"])
+        .assert()
+        .success();
+
+    // reject by id
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["reject", "1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Rejected ADR 0001"));
+
+    let adr1 = adr_dir(tmp.path()).join("0001-discard-me.md");
+    let c1 = read(&adr1);
+    assert!(c1.contains("Status: Rejected"));
+    assert!(c1.contains(&format!("Date: {}", today)));
+
+    // new second and reject by title (case-insensitive)
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Reject This Too"])
+        .assert()
+        .success();
+
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["reject", "reject this too"])
+        .assert()
+        .success();
+
+    let adr2 = adr_dir(tmp.path()).join("0002-reject-this-too.md");
+    let c2 = read(&adr2);
+    assert!(c2.contains("Status: Rejected"));
+}
+
+#[test]
 fn template_via_config_is_applied() {
     let tmp = tempfile::tempdir().unwrap();
     // Write template and config

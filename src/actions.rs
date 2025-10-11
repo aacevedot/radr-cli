@@ -181,6 +181,59 @@ pub fn accept<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
     Ok(updated)
 }
 
+pub fn reject<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Result<AdrMeta> {
+    let adrs = repo.list()?;
+    let target = match parse_number(id_or_title) {
+        Ok(n) if adrs.iter().any(|a| a.number == n) => adrs
+            .into_iter()
+            .find(|a| a.number == n)
+            .ok_or_else(|| anyhow!("ADR not found by id: {}", n))?,
+        _ => {
+            let lower = id_or_title.trim().to_ascii_lowercase();
+            adrs
+                .into_iter()
+                .find(|a| a.title.to_ascii_lowercase() == lower)
+                .ok_or_else(|| anyhow!("ADR not found by id or title: {}", id_or_title))?
+        }
+    };
+
+    let mut content = repo.read_string(&target.path)?;
+    let today = Local::now().format("%Y-%m-%d").to_string();
+    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    let mut found_status = false;
+    let mut found_date = false;
+    for l in &mut lines {
+        if l.starts_with("Status:") {
+            *l = "Status: Rejected".to_string();
+            found_status = true;
+        }
+        if l.starts_with("Date:") {
+            *l = format!("Date: {}", today);
+            found_date = true;
+        }
+    }
+    if !found_status {
+        let insert_at = if !lines.is_empty() { 1 } else { 0 };
+        lines.insert(insert_at, "Status: Rejected".to_string());
+    }
+    if !found_date {
+        lines.insert(1, format!("Date: {}", today));
+    }
+    content = lines.join("\n");
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
+    repo.write_string(&target.path, &content)?;
+
+    let adrs2 = repo.list()?;
+    write_index(repo, cfg, &adrs2)?;
+    let updated = adrs2
+        .into_iter()
+        .find(|a| a.number == target.number)
+        .ok_or_else(|| anyhow!("Updated ADR not found"))?;
+    Ok(updated)
+}
+
 fn write_index<R: AdrRepository>(repo: &R, cfg: &Config, adrs: &[AdrMeta]) -> Result<()> {
     let mut content = String::new();
     content.push_str("# Architecture Decision Records\n\n");
@@ -450,5 +503,26 @@ mod tests {
         let _m2 = create_new_adr(&repo, &cfg, "Use Queue", None).unwrap();
         let updated2 = accept(&repo, &cfg, "use queue").unwrap();
         assert_eq!(updated2.status, "Accepted");
+    }
+
+    #[test]
+    fn test_reject_by_id_and_title() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let repo = FsAdrRepository::new(&adr_dir);
+        let cfg = Config { adr_dir: adr_dir.clone(), index_name: "index.md".into(), template: None };
+
+        let m1 = create_new_adr(&repo, &cfg, "Reject Me", None).unwrap();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        let updated1 = reject(&repo, &cfg, &format!("{}", m1.number)).unwrap();
+        assert_eq!(updated1.status, "Rejected");
+        let c1 = repo.read_string(&updated1.path).unwrap();
+        assert!(c1.contains("Status: Rejected"));
+        assert!(c1.contains(&format!("Date: {}", today)));
+
+        let _m2 = create_new_adr(&repo, &cfg, "Another One", None).unwrap();
+        let updated2 = reject(&repo, &cfg, "another one").unwrap();
+        assert_eq!(updated2.status, "Rejected");
     }
 }
