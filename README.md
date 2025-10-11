@@ -4,11 +4,17 @@
 - Commands: create, supersede, list, and maintain an `index.md`.
 - Config: JSON, YAML, or TOML file to choose ADR location and template.
 
-**Install**
+**Install (cargo)**
 
-- Requires: Rust toolchain (cargo + rustc).
-- Build: `cargo build --release`
-- Run: `target/release/radr --help`
+- Requires: Rust toolchain (`cargo` + `rustc`).
+- Install: `cargo install radr`
+- Run: `radr --help`
+
+**Install (local)**
+
+- Build from source: `cargo build --release`
+- Install locally: `cargo install --path .`
+- Run built binary: `target/release/radr --help`
 
 **Usage**
 
