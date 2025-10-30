@@ -10,13 +10,20 @@ Command Line Interface (CLI) application to manage Architecture Decision Records
 
 ## Installation
 
-### Install (via cargo)
+### Install via cargo
 
 - Requires: Rust toolchain (`cargo` + `rustc`).
 - Install: `cargo install radr-cli`
 - Run: `radr --help`
 
-### Prebuilt binaries (no Rust required)
+### Install via source
+
+- Clone and navigate to the project
+- Build from source: `cargo build --release`
+- Install locally: `cargo install --path .`
+- Run built binary: `target/release/radr --help`
+
+### Install via prebuilt binaries
 
 - Download from GitHub Releases: navigate to the latest tag and grab the asset matching your OS/arch, e.g.:
   - Linux: `radr-cli-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` (also `aarch64`, `armv7`, `i686`). Static builds are available as `*-unknown-linux-musl` for maximum portability.
@@ -28,13 +35,6 @@ Command Line Interface (CLI) application to manage Architecture Decision Records
 - Example (Windows PowerShell):
   - `Expand-Archive radr-cli-vX.Y.Z-x86_64-pc-windows-msvc.zip -DestinationPath .`
   - `./radr.exe --help`
-
-### Install (via source)
-
-- Clone and navigate to the project
-- Build from source: `cargo build --release`
-- Install locally: `cargo install --path .`
-- Run built binary: `target/release/radr --help`
 
 ## Usage
 
