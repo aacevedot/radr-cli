@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::domain::{parse_number, slugify, AdrMeta};
 use crate::repository::{idx_path, AdrRepository};
+use crate::yaml_util::escape_yaml;
 use std::collections::HashMap;
 
 pub fn create_new_adr<R: AdrRepository>(
@@ -17,17 +18,22 @@ pub fn create_new_adr<R: AdrRepository>(
     let mut adrs = repo.list()?;
     let next = adrs.iter().map(|a| a.number).max().unwrap_or(0) + 1;
     let slug = slugify(title);
-    let filename = format!("{:04}-{}.md", next, slug);
+    let ext = cfg.format.as_str();
+    let filename = format!("{:04}-{}.{}", next, slug, ext);
     let path = repo.adr_dir().join(filename);
     let date = Local::now().format("%Y-%m-%d").to_string();
 
     // Resolve supersedes display: link to existing ADR filename when possible
-    let supersedes_display = supersedes.and_then(|n| {
-        adrs.iter()
+    let supersedes_display = supersedes.map(|n| {
+        if let Some(fname) = adrs
+            .iter()
             .find(|a| a.number == n)
             .and_then(|a| a.path.file_name().and_then(OsStr::to_str))
-            .map(|fname| format!("[{:04}]({})", n, fname))
-            .or_else(|| Some(format!("{:04}", n)))
+        {
+            format!("[{:04}]({})", n, fname)
+        } else {
+            format!("{:04}", n)
+        }
     });
 
     let content = if let Some(tpl_path) = &cfg.template {
@@ -41,6 +47,21 @@ pub fn create_new_adr<R: AdrRepository>(
                 "{{SUPERSEDES}}",
                 supersedes_display.as_deref().unwrap_or_default(),
             )
+    } else if cfg.front_matter {
+        let mut body = String::new();
+        body.push_str("---\n");
+        body.push_str(&format!("title: {}\n", escape_yaml(title)));
+        body.push_str(&format!("number: {}\n", next));
+        body.push_str(&format!("date: {}\n", date));
+        body.push_str("status: Proposed\n");
+        if let Some(s) = supersedes {
+            body.push_str(&format!("supersedes: {}\n", s));
+        }
+        body.push_str("---\n\n");
+        body.push_str("## Context\n\nDescribe the context and forces at play.\n\n");
+        body.push_str("## Decision\n\nState the decision that was made and why.\n\n");
+        body.push_str("## Consequences\n\nList the trade-offs and follow-ups.\n");
+        body
     } else {
         let mut header = format!(
             "# ADR {:04}: {}\n\nDate: {}\nStatus: Proposed\n",
@@ -50,8 +71,8 @@ pub fn create_new_adr<R: AdrRepository>(
             header.push_str(&format!("Supersedes: {}\n", sup));
         }
         header.push_str(
-            "\n## Context\n\nDescribe the context and forces at play.\n\n## Decision\n\nState the decision that was made and why.\n\n## Consequences\n\nList the trade-offs and follow-ups.\n",
-        );
+                "\n## Context\n\nDescribe the context and forces at play.\n\n## Decision\n\nState the decision that was made and why.\n\n## Consequences\n\nList the trade-offs and follow-ups.\n",
+            );
         header
     };
 
@@ -61,7 +82,7 @@ pub fn create_new_adr<R: AdrRepository>(
         number: next,
         title: title.to_string(),
         status: "Proposed".to_string(),
-        date: date.clone(),
+        date,
         supersedes,
         superseded_by: None,
         path: path.clone(),
@@ -87,32 +108,77 @@ pub fn mark_superseded<R: AdrRepository>(
         .ok_or_else(|| anyhow!("Could not find ADR {:04} to supersede", old_number))?;
 
     let contents = repo.read_string(&path)?;
-    let mut lines: Vec<String> = contents.lines().map(|s| s.to_string()).collect();
-    let mut found_status = false;
-    let mut found_superseded_by = false;
-    for l in &mut lines {
-        if l.starts_with("Status:") {
-            *l = format!("Status: Superseded by {:04}", new_number);
-            found_status = true;
+    let mut updated = String::new();
+    if let Some(stripped) = contents.strip_prefix("---\n") {
+        // Update YAML front matter if present
+        if let Some(end) = stripped.find("\n---\n") {
+            let fm_block = &stripped[..end];
+            #[derive(serde::Deserialize, serde::Serialize)]
+            struct FM {
+                #[serde(default)]
+                title: Option<String>,
+                #[serde(default)]
+                date: Option<String>,
+                #[serde(default)]
+                status: Option<String>,
+                #[serde(default)]
+                number: Option<u32>,
+                #[serde(default)]
+                supersedes: Option<u32>,
+                #[serde(default)]
+                superseded_by: Option<u32>,
+            }
+            let mut fm: FM = serde_yaml::from_str(fm_block).unwrap_or(FM {
+                title: None,
+                date: None,
+                status: None,
+                number: None,
+                supersedes: None,
+                superseded_by: None,
+            });
+            fm.status = Some(format!("Superseded by {:04}", new_number));
+            fm.superseded_by = Some(new_number);
+            let rest = &stripped[end + 5..];
+            updated.push_str("---\n");
+            updated.push_str(&serde_yaml::to_string(&fm).unwrap_or_default());
+            updated.push_str("---\n");
+            if !rest.starts_with('\n') {
+                updated.push('\n');
+            }
+            updated.push_str(rest);
+        } else {
+            updated = contents;
         }
-        if l.starts_with("Superseded-by:") {
-            *l = format!("Superseded-by: {:04}", new_number);
-            found_superseded_by = true;
+    } else {
+        let mut lines: Vec<String> = contents.lines().map(|s| s.to_string()).collect();
+        let mut found_status = false;
+        let mut found_superseded_by = false;
+        for l in &mut lines {
+            if l.starts_with("Status:") {
+                *l = format!("Status: Superseded by {:04}", new_number);
+                found_status = true;
+            }
+            if l.starts_with("Superseded-by:") {
+                *l = format!("Superseded-by: {:04}", new_number);
+                found_superseded_by = true;
+            }
+        }
+        if !found_status {
+            lines.insert(1, format!("Status: Superseded by {:04}", new_number));
+        }
+        if !found_superseded_by {
+            let insert_at = lines
+                .iter()
+                .position(|l| l.trim().is_empty())
+                .unwrap_or(lines.len());
+            lines.insert(insert_at, format!("Superseded-by: {:04}", new_number));
+        }
+        updated = lines.join("\n");
+        if !updated.ends_with('\n') {
+            updated.push('\n');
         }
     }
-    if !found_status {
-        lines.insert(1, format!("Status: Superseded by {:04}", new_number));
-    }
-    if !found_superseded_by {
-        let insert_at = lines
-            .iter()
-            .position(|l| l.trim().is_empty())
-            .unwrap_or(lines.len());
-        lines.insert(insert_at, format!("Superseded-by: {:04}", new_number));
-    }
-    let mut content = lines.join("\n");
-    content.push('\n');
-    repo.write_string(&path, &content)?;
+    repo.write_string(&path, &updated)?;
 
     // refresh index
     let adrs = repo.list()?;
@@ -144,30 +210,57 @@ pub fn accept<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
 
     let mut content = repo.read_string(&target.path)?;
     let today = Local::now().format("%Y-%m-%d").to_string();
-    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
-    let mut found_status = false;
-    let mut found_date = false;
-    for l in &mut lines {
-        if l.starts_with("Status:") {
-            *l = "Status: Accepted".to_string();
-            found_status = true;
+    if let Some(stripped) = content.strip_prefix("---\n") {
+        if let Some(end) = stripped.find("\n---\n") {
+            let fm_block = &stripped[..end];
+            #[derive(serde::Deserialize, serde::Serialize, Default)]
+            struct FM {
+                title: Option<String>,
+                date: Option<String>,
+                status: Option<String>,
+                number: Option<u32>,
+                supersedes: Option<u32>,
+                superseded_by: Option<u32>,
+            }
+            let mut fm: FM = serde_yaml::from_str(fm_block).unwrap_or_default();
+            fm.status = Some("Accepted".to_string());
+            fm.date = Some(today.clone());
+            let rest = &stripped[end + 5..];
+            let mut out = String::new();
+            out.push_str("---\n");
+            out.push_str(&serde_yaml::to_string(&fm).unwrap_or_default());
+            out.push_str("---\n");
+            if !rest.starts_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(rest);
+            content = out;
         }
-        if l.starts_with("Date:") {
-            *l = format!("Date: {}", today);
-            found_date = true;
+    } else {
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        let mut found_status = false;
+        let mut found_date = false;
+        for l in &mut lines {
+            if l.starts_with("Status:") {
+                *l = "Status: Accepted".to_string();
+                found_status = true;
+            }
+            if l.starts_with("Date:") {
+                *l = format!("Date: {}", today);
+                found_date = true;
+            }
         }
-    }
-    if !found_status {
-        // insert after header line
-        let insert_at = if !lines.is_empty() { 1 } else { 0 };
-        lines.insert(insert_at, "Status: Accepted".to_string());
-    }
-    if !found_date {
-        lines.insert(1, format!("Date: {}", today));
-    }
-    content = lines.join("\n");
-    if !content.ends_with('\n') {
-        content.push('\n');
+        if !found_status {
+            let insert_at = if !lines.is_empty() { 1 } else { 0 };
+            lines.insert(insert_at, "Status: Accepted".to_string());
+        }
+        if !found_date {
+            lines.insert(1, format!("Date: {}", today));
+        }
+        content = lines.join("\n");
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
     }
     repo.write_string(&target.path, &content)?;
 
@@ -198,29 +291,57 @@ pub fn reject<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
 
     let mut content = repo.read_string(&target.path)?;
     let today = Local::now().format("%Y-%m-%d").to_string();
-    let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
-    let mut found_status = false;
-    let mut found_date = false;
-    for l in &mut lines {
-        if l.starts_with("Status:") {
-            *l = "Status: Rejected".to_string();
-            found_status = true;
+    if let Some(stripped) = content.strip_prefix("---\n") {
+        if let Some(end) = stripped.find("\n---\n") {
+            let fm_block = &stripped[..end];
+            #[derive(serde::Deserialize, serde::Serialize, Default)]
+            struct FM {
+                title: Option<String>,
+                date: Option<String>,
+                status: Option<String>,
+                number: Option<u32>,
+                supersedes: Option<u32>,
+                superseded_by: Option<u32>,
+            }
+            let mut fm: FM = serde_yaml::from_str(fm_block).unwrap_or_default();
+            fm.status = Some("Rejected".to_string());
+            fm.date = Some(today.clone());
+            let rest = &stripped[end + 5..];
+            let mut out = String::new();
+            out.push_str("---\n");
+            out.push_str(&serde_yaml::to_string(&fm).unwrap_or_default());
+            out.push_str("---\n");
+            if !rest.starts_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(rest);
+            content = out;
         }
-        if l.starts_with("Date:") {
-            *l = format!("Date: {}", today);
-            found_date = true;
+    } else {
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        let mut found_status = false;
+        let mut found_date = false;
+        for l in &mut lines {
+            if l.starts_with("Status:") {
+                *l = "Status: Rejected".to_string();
+                found_status = true;
+            }
+            if l.starts_with("Date:") {
+                *l = format!("Date: {}", today);
+                found_date = true;
+            }
         }
-    }
-    if !found_status {
-        let insert_at = if !lines.is_empty() { 1 } else { 0 };
-        lines.insert(insert_at, "Status: Rejected".to_string());
-    }
-    if !found_date {
-        lines.insert(1, format!("Date: {}", today));
-    }
-    content = lines.join("\n");
-    if !content.ends_with('\n') {
-        content.push('\n');
+        if !found_status {
+            let insert_at = if !lines.is_empty() { 1 } else { 0 };
+            lines.insert(insert_at, "Status: Rejected".to_string());
+        }
+        if !found_date {
+            lines.insert(1, format!("Date: {}", today));
+        }
+        content = lines.join("\n");
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
     }
     repo.write_string(&target.path, &content)?;
 
@@ -279,6 +400,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".to_string(),
             template: None,
+            ..Config::default()
         };
 
         let meta = create_new_adr(&repo, &cfg, "First Decision", None).unwrap();
@@ -302,6 +424,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".to_string(),
             template: None,
+            ..Config::default()
         };
 
         let old = create_new_adr(&repo, &cfg, "Choose X", None).unwrap();
@@ -327,6 +450,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".to_string(),
             template: None,
+            ..Config::default()
         };
 
         let old = create_new_adr(&repo, &cfg, "Choose X", None).unwrap();
@@ -340,6 +464,29 @@ mod tests {
     }
 
     #[test]
+    fn test_create_new_mdx_with_front_matter() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("adrs");
+        let repo = FsAdrRepository::new(&adr_dir);
+        let mut cfg = Config {
+            adr_dir: adr_dir.clone(),
+            index_name: "index.md".into(),
+            template: None,
+            ..Config::default()
+        };
+        cfg.format = "mdx".into();
+        cfg.front_matter = true;
+
+        let meta = create_new_adr(&repo, &cfg, "Front Matter Title", None).unwrap();
+        assert!(meta.path.ends_with("0001-front-matter-title.mdx"));
+        let c = repo.read_string(&meta.path).unwrap();
+        assert!(c.starts_with("---\n"));
+        assert!(c.contains("title:"));
+        assert!(c.contains("status: Proposed"));
+        assert!(c.contains("number: 1"));
+    }
+
+    #[test]
     fn test_accept_by_id_and_title() {
         let dir = tempdir().unwrap();
         let adr_dir = dir.path().join("adrs");
@@ -348,6 +495,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".to_string(),
             template: None,
+            ..Config::default()
         };
 
         let m1 = create_new_adr(&repo, &cfg, "Adopt Z", None).unwrap();
@@ -373,6 +521,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".to_string(),
             template: None,
+            ..Config::default()
         };
         // No ADR 0001 exists, should error
         let err = mark_superseded(&repo, &cfg, 1, 2).unwrap_err();
@@ -389,6 +538,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".to_string(),
             template: None,
+            ..Config::default()
         };
         let err = accept(&repo, &cfg, "999").unwrap_err();
         let msg = format!("{}", err);
@@ -404,6 +554,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".into(),
             template: Some(dir.path().join("missing.tpl")),
+            ..Config::default()
         };
         let err = create_new_adr(&repo, &cfg, "X", None).unwrap_err();
         let msg = format!("{}", err);
@@ -424,6 +575,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".into(),
             template: None,
+            ..Config::default()
         };
 
         let meta = create_new_adr(&repo, &cfg, "Next After Gap", None).unwrap();
@@ -447,6 +599,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".into(),
             template: Some(tpl_path.clone()),
+            ..Config::default()
         };
         let meta = create_new_adr(&repo, &cfg, "Use Template", Some(3)).unwrap();
         let content = repo.read_string(&meta.path).unwrap();
@@ -470,6 +623,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".into(),
             template: None,
+            ..Config::default()
         };
 
         // Create new ADR to get number 2
@@ -489,6 +643,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".into(),
             template: None,
+            ..Config::default()
         };
 
         let m1 = create_new_adr(&repo, &cfg, "Choose DB", None).unwrap();
@@ -513,6 +668,7 @@ mod tests {
             adr_dir: adr_dir.clone(),
             index_name: "index.md".into(),
             template: None,
+            ..Config::default()
         };
 
         let m1 = create_new_adr(&repo, &cfg, "Reject Me", None).unwrap();

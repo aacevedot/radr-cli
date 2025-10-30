@@ -8,6 +8,8 @@ pub struct Config {
     pub adr_dir: PathBuf,
     pub index_name: String,
     pub template: Option<PathBuf>,
+    pub format: String,     // "md" or "mdx"
+    pub front_matter: bool, // include YAML front matter
 }
 
 impl Default for Config {
@@ -16,6 +18,8 @@ impl Default for Config {
             adr_dir: PathBuf::from("docs/adr"),
             index_name: "index.md".to_string(),
             template: None,
+            format: "md".to_string(),
+            front_matter: false,
         }
     }
 }
@@ -25,6 +29,8 @@ struct FileConfig {
     adr_dir: Option<PathBuf>,
     index_name: Option<String>,
     template: Option<PathBuf>,
+    format: Option<String>,
+    front_matter: Option<bool>,
 }
 
 pub fn load_config(cli_path: Option<&PathBuf>) -> Result<Config> {
@@ -70,6 +76,15 @@ pub fn load_config(cli_path: Option<&PathBuf>) -> Result<Config> {
         }
         if let Some(t) = fc.template {
             cfg.template = Some(t);
+        }
+        if let Some(f) = fc.format {
+            let f = f.to_ascii_lowercase();
+            if f == "md" || f == "mdx" {
+                cfg.format = f;
+            }
+        }
+        if let Some(fm) = fc.front_matter {
+            cfg.front_matter = fm;
         }
     }
 
@@ -118,6 +133,9 @@ mod tests {
             cfg.template.as_deref(),
             Some(PathBuf::from("tpl.md").as_path())
         );
+        // Defaults remain for new fields unless provided
+        assert_eq!(cfg.format, "md");
+        assert!(!cfg.front_matter);
         std::env::remove_var("RADR_CONFIG");
     }
 

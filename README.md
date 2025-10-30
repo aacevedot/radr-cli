@@ -57,6 +57,8 @@ Command Line Interface (CLI) application to manage Architecture Decision Records
   - `adr_dir` (string): Directory where ADRs live. Default: `docs/adr`.
   - `index_name` (string): Name of the index file. Default: `index.md`.
   - `template` (string): Optional path to a custom template.
+  - `format` (string): `md` or `mdx` for new ADRs. Default: `md`.
+  - `front_matter` (bool): If true, adds YAML front matter (`title`, `date`, `status`, `number`, optional `supersedes`). Default: `false`.
 
 ### Examples
 
@@ -66,6 +68,8 @@ Command Line Interface (CLI) application to manage Architecture Decision Records
 adr_dir = "docs/adr"
 index_name = "index.md"
 template = "adr_template.md"
+format = "mdx"        # or "md"
+front_matter = true    # include YAML front matter
 ```
 
 - YAML (`radr.yaml`)
@@ -74,6 +78,8 @@ template = "adr_template.md"
 adr_dir: docs/adr
 index_name: index.md
 template: adr_template.md
+format: mdx
+front_matter: true
 ```
 
 - JSON (`radr.json`)
@@ -82,7 +88,9 @@ template: adr_template.md
 {
   "adr_dir": "docs/adr",
   "index_name": "index.md",
-  "template": "adr_template.md"
+  "template": "adr_template.md",
+  "format": "mdx",
+  "front_matter": true
 }
 ```
 

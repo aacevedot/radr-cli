@@ -191,6 +191,120 @@ fn env_config_overrides_local_files() {
 }
 
 #[test]
+fn mdx_new_creates_front_matter_and_index() {
+    let tmp = tempfile::tempdir().unwrap();
+    // MDX + front matter via TOML config
+    let cfg = tmp.path().join("radr.toml");
+    std::fs::write(
+        &cfg,
+        b"adr_dir='adrs'\nindex_name='INDEX.md'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+
+    // create new
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "MDX Test"])
+        .assert()
+        .success();
+
+    // file exists with .mdx extension and front matter
+    let adr = tmp.path().join("adrs").join("0001-mdx-test.mdx");
+    assert!(adr.exists());
+    let c = read(&adr);
+    assert!(c.starts_with("---\n"));
+    assert!(c.contains("title:"));
+    assert!(c.contains("status: Proposed"));
+    assert!(c.contains("number: 1"));
+    assert!(c.contains("## Context"));
+
+    // index exists and includes entry
+    let index = tmp.path().join("adrs").join("INDEX.md");
+    assert!(index.exists());
+    let idx = read(&index);
+    assert!(idx.contains("0001: MDX Test"));
+    assert!(idx.contains("Status: Proposed"));
+}
+
+#[test]
+fn mdx_accept_updates_front_matter() {
+    let tmp = tempfile::tempdir().unwrap();
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    // MDX + front matter
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='adrs'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Accept Me"])
+        .assert()
+        .success();
+
+    // accept should update YAML front matter status/date
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["accept", "1"])
+        .assert()
+        .success();
+
+    let adr = tmp.path().join("adrs").join("0001-accept-me.mdx");
+    let c = read(&adr);
+    assert!(c.contains("status: Accepted"));
+    assert!(c.contains(&format!("date: {}", today)));
+}
+
+#[test]
+fn mdx_supersede_updates_front_matter_and_index() {
+    let tmp = tempfile::tempdir().unwrap();
+    // MDX + front matter
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='adrs'\nindex_name='INDEX.md'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+
+    // create first
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Choose X"])
+        .assert()
+        .success();
+
+    // supersede
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "1", "Choose Y"])
+        .assert()
+        .success();
+
+    let old = tmp.path().join("adrs").join("0001-choose-x.mdx");
+    let new_adr = tmp.path().join("adrs").join("0002-choose-y.mdx");
+    assert!(old.exists());
+    assert!(new_adr.exists());
+
+    let old_c = read(&old);
+    assert!(old_c.contains("status: Superseded by 0002"));
+    assert!(old_c.contains("superseded_by: 2"));
+
+    let new_c = read(&new_adr);
+    assert!(new_c.contains("supersedes: 1"));
+    assert!(new_c.contains("status: Proposed"));
+
+    let index = tmp.path().join("adrs").join("INDEX.md");
+    let idx = read(&index);
+    assert!(idx.contains("0001: Choose X"));
+    assert!(idx.contains("0002: Choose Y"));
+}
+
+#[test]
 fn accept_nonexistent_returns_error() {
     let tmp = tempfile::tempdir().unwrap();
     assert_cmd::Command::cargo_bin("radr")

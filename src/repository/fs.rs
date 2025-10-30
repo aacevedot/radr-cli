@@ -22,8 +22,6 @@ impl FsAdrRepository {
     }
 
     fn parse_adr_file(&self, path: &Path) -> Result<AdrMeta> {
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
         let mut number = self.number_from_filename(path).unwrap_or(0);
         let mut title = String::new();
         let mut status = String::from("Accepted");
@@ -31,38 +29,79 @@ impl FsAdrRepository {
         let mut supersedes: Option<u32> = None;
         let mut superseded_by: Option<u32> = None;
 
-        for (i, line) in reader.lines().take(200).enumerate() {
-            let line = line?;
-            if i == 0 {
-                if let Some(idx) = line.find(": ") {
-                    let head = &line[..idx];
-                    if let Some(num_idx) = head.rfind(' ') {
-                        if let Ok(n) = head[num_idx + 1..].parse::<u32>() {
-                            number = n;
-                        }
+        let raw = fs::read_to_string(path)?;
+        // Try front matter first
+        if let Some(stripped) = raw.strip_prefix("---\n") {
+            if let Some(end) = stripped.find("\n---\n") {
+                let fm_block = &stripped[..end];
+                #[derive(serde::Deserialize)]
+                struct FM {
+                    title: Option<String>,
+                    date: Option<String>,
+                    status: Option<String>,
+                    number: Option<u32>,
+                    supersedes: Option<u32>,
+                    superseded_by: Option<u32>,
+                }
+                if let Ok(fm) = serde_yaml::from_str::<FM>(fm_block) {
+                    if let Some(n) = fm.number {
+                        number = n;
                     }
-                    title = line[idx + 2..].trim().to_string();
+                    if let Some(t) = fm.title {
+                        title = t;
+                    }
+                    if let Some(d) = fm.date {
+                        date = d;
+                    }
+                    if let Some(s) = fm.status {
+                        status = s;
+                    }
+                    if let Some(su) = fm.supersedes {
+                        supersedes = Some(su);
+                    }
+                    if let Some(sb) = fm.superseded_by {
+                        superseded_by = Some(sb);
+                    }
                 }
             }
-            if let Some(stripped) = line.strip_prefix("Title:") {
-                title = stripped.trim().to_string();
-            }
-            if let Some(stripped) = line.strip_prefix("Date:") {
-                date = stripped.trim().to_string();
-            }
-            if let Some(stripped) = line.strip_prefix("Status:") {
-                status = stripped.trim().to_string();
-            }
-            if let Some(stripped) = line.strip_prefix("Supersedes:") {
-                let v = stripped.trim();
-                if let Ok(n) = v.parse::<u32>() {
-                    supersedes = Some(n);
+        }
+
+        if title.is_empty() || date.is_empty() || status.is_empty() {
+            // Fallback scan lines for classic format
+            let reader = BufReader::new(raw.as_bytes());
+            for (i, line) in reader.lines().take(200).enumerate() {
+                let line = line?;
+                if i == 0 {
+                    if let Some(idx) = line.find(": ") {
+                        let head = &line[..idx];
+                        if let Some(num_idx) = head.rfind(' ') {
+                            if let Ok(n) = head[num_idx + 1..].parse::<u32>() {
+                                number = n;
+                            }
+                        }
+                        title = line[idx + 2..].trim().to_string();
+                    }
                 }
-            }
-            if let Some(stripped) = line.strip_prefix("Superseded-by:") {
-                let v = stripped.trim();
-                if let Ok(n) = v.parse::<u32>() {
-                    superseded_by = Some(n);
+                if let Some(stripped) = line.strip_prefix("Title:") {
+                    title = stripped.trim().to_string();
+                }
+                if let Some(stripped) = line.strip_prefix("Date:") {
+                    date = stripped.trim().to_string();
+                }
+                if let Some(stripped) = line.strip_prefix("Status:") {
+                    status = stripped.trim().to_string();
+                }
+                if let Some(stripped) = line.strip_prefix("Supersedes:") {
+                    let v = stripped.trim();
+                    if let Ok(n) = v.parse::<u32>() {
+                        supersedes = Some(n);
+                    }
+                }
+                if let Some(stripped) = line.strip_prefix("Superseded-by:") {
+                    let v = stripped.trim();
+                    if let Ok(n) = v.parse::<u32>() {
+                        superseded_by = Some(n);
+                    }
                 }
             }
         }
@@ -128,14 +167,14 @@ impl AdrRepository for FsAdrRepository {
         if !self.root.exists() {
             return Ok(res);
         }
-        let re = Regex::new(r"^\d{4}-.*\.md$")
+        let re = Regex::new(r"^\d{4}-.*\.(md|mdx)$")
             .map_err(|e| anyhow!("invalid ADR filename regex: {}", e))?;
         for entry in fs::read_dir(&self.root)
             .with_context(|| format!("Reading ADR directory at {}", self.root.display()))?
         {
             let entry = entry?;
             let path = entry.path();
-            if !path.is_file() || path.extension().and_then(OsStr::to_str) != Some("md") {
+            if !path.is_file() {
                 continue;
             }
             let fname = path.file_name().and_then(OsStr::to_str).unwrap_or("");
@@ -235,5 +274,44 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].title, "Untitled");
         assert_eq!(list[0].number, 8);
+    }
+
+    #[test]
+    fn test_parse_front_matter_only_mdx() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let p = root.join("0001-front.mdx");
+        let content = "---\n\
+title: Front Matter Title\n\
+date: 2025-01-02\n\
+status: Proposed\n\
+number: 1\n\
+supersedes: 3\n\
+superseded_by: 5\n\
+---\n\nBody\n";
+        std::fs::write(&p, content).unwrap();
+        let repo = FsAdrRepository::new(root);
+        let list = repo.list().unwrap();
+        assert_eq!(list.len(), 1);
+        let a = &list[0];
+        assert_eq!(a.number, 1);
+        assert_eq!(a.title, "Front Matter Title");
+        assert_eq!(a.date, "2025-01-02");
+        assert_eq!(a.status, "Proposed");
+        assert_eq!(a.supersedes, Some(3));
+        assert_eq!(a.superseded_by, Some(5));
+    }
+
+    #[test]
+    fn test_list_includes_mdx_and_md() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("0001-a.mdx"), "# ADR 0001: A\n\n").unwrap();
+        std::fs::write(root.join("0002-b.md"), "# ADR 0002: B\n\n").unwrap();
+        let repo = FsAdrRepository::new(root);
+        let list = repo.list().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].number, 1);
+        assert_eq!(list[1].number, 2);
     }
 }

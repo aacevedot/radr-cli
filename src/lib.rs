@@ -2,6 +2,7 @@ pub mod actions;
 pub mod config;
 pub mod domain;
 pub mod repository;
+pub mod yaml_util;
 
 pub use crate::config::Config;
 pub use crate::domain::{parse_number, AdrMeta};
