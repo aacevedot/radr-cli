@@ -42,11 +42,10 @@ tasks:
 
   # Convenience tasks for common commands
   cmd:new:
-    desc: "Create a new ADR (vars: TITLE, STATUS)"
+    desc: "Create a new ADR (var: TITLE)"
     vars:
       TITLE: "Example ADR"
-      STATUS: "Accepted"
-    cmd: cargo run -- new "{{ .TITLE }}" --status "{{ .STATUS }}"
+    cmd: cargo run -- new "{{ .TITLE }}"
 
   cmd:supersede:
     desc: "Create an ADR superseding another (vars: ID, TITLE)"
