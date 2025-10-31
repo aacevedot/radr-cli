@@ -616,3 +616,47 @@ fn reformat_updates_incoming_links() {
     let after = read(&adr2);
     assert!(after.contains("Supersedes: [0001](0001-choose-x.mdx)"));
 }
+
+#[test]
+fn reformat_all_converts_everything() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Start with classic md
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "First"])
+        .assert()
+        .success();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Second"])
+        .assert()
+        .success();
+
+    assert!(adr_dir(tmp.path()).join("0001-first.md").exists());
+    assert!(adr_dir(tmp.path()).join("0002-second.md").exists());
+
+    // Switch config and run reformat --all
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='docs/adr'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["reformat", "--all"])
+        .assert()
+        .success();
+
+    let a1 = adr_dir(tmp.path()).join("0001-first.mdx");
+    let a2 = adr_dir(tmp.path()).join("0002-second.mdx");
+    assert!(a1.exists());
+    assert!(a2.exists());
+    let c1 = read(&a1);
+    let c2 = read(&a2);
+    assert!(c1.starts_with("---\n") && c2.starts_with("---\n"));
+    assert!(c1.contains("Status:") && c2.contains("Status:"));
+}

@@ -379,6 +379,17 @@ pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<Adr
     Ok(updated)
 }
 
+pub fn reformat_all<R: AdrRepository>(repo: &R, cfg: &Config) -> Result<Vec<AdrMeta>> {
+    let adrs = repo.list()?;
+    let ids: Vec<u32> = adrs.iter().map(|a| a.number).collect();
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let m = reformat(repo, cfg, id)?;
+        out.push(m);
+    }
+    Ok(out)
+}
+
 pub fn list_and_index<R: AdrRepository>(repo: &R, cfg: &Config) -> Result<Vec<AdrMeta>> {
     let adrs = repo.list()?;
     write_index(repo, cfg, &adrs)?;
