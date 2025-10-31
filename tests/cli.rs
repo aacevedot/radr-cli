@@ -660,3 +660,121 @@ fn reformat_all_converts_everything() {
     assert!(c1.starts_with("---\n") && c2.starts_with("---\n"));
     assert!(c1.contains("Status:") && c2.contains("Status:"));
 }
+
+#[test]
+fn reformat_idempotent_no_dup_meta() {
+    let tmp = tempfile::tempdir().unwrap();
+    // default config: md without front matter
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Idempotent"])
+        .assert()
+        .success();
+
+    // Reformat twice, should not duplicate Date/Status
+    for _ in 0..2 {
+        assert_cmd::Command::cargo_bin("radr")
+            .unwrap()
+            .current_dir(tmp.path())
+            .args(["reformat", "1"])
+            .assert()
+            .success();
+    }
+
+    let p = adr_dir(tmp.path()).join("0001-idempotent.md");
+    let c = read(&p);
+    // Exactly one Date: and one Status:
+    let date_count = c.matches("\nDate:").count();
+    let status_count = c.matches("\nStatus:").count();
+    assert_eq!(date_count, 1);
+    assert_eq!(status_count, 1);
+}
+
+#[test]
+fn reformat_preserves_superseded_by_and_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Create and supersede 1 -> 2 (classic md)
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Old One"])
+        .assert()
+        .success();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "1", "New One"])
+        .assert()
+        .success();
+
+    // Switch to mdx + front matter and reformat the old ADR (1)
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='docs/adr'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["reformat", "1"])
+        .assert()
+        .success();
+
+    let old = adr_dir(tmp.path()).join("0001-old-one.mdx");
+    let c = read(&old);
+    assert!(c.starts_with("---\n") && c.contains("title:"));
+    assert!(c.contains("Status: Superseded by 0002"));
+    assert!(c.contains("Superseded-by: 0002"));
+    // Ordering: Status line appears before Superseded-by
+    let s_pos = c.find("Status: Superseded by 0002").unwrap();
+    let sb_pos = c.find("Superseded-by: 0002").unwrap();
+    assert!(s_pos < sb_pos);
+}
+
+#[test]
+fn reformat_updates_index_link_for_superseded_by() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Create and supersede 1 -> 2
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Foo"])
+        .assert()
+        .success();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "1", "Bar"])
+        .assert()
+        .success();
+
+    // Change config to mdx and reformat the superseding ADR 2
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='docs/adr'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["reformat", "2"])
+        .assert()
+        .success();
+
+    // Index should link the old ADR's status to 0002 with .mdx extension
+    let idx = read(adr_dir(tmp.path()).join("index.md"));
+    assert!(idx.contains("Status: Superseded by [0002](0002-bar.mdx)"));
+}
+
+#[test]
+fn reformat_missing_id_fails_without_all() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Just invoking reformat without id and without --all should fail
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .arg("reformat")
+        .assert()
+        .failure();
+}
