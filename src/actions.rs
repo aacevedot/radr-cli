@@ -51,13 +51,13 @@ pub fn create_new_adr<R: AdrRepository>(
         let mut body = String::new();
         body.push_str("---\n");
         body.push_str(&format!("title: {}\n", escape_yaml(title)));
-        body.push_str(&format!("number: {}\n", next));
-        body.push_str(&format!("date: {}\n", date));
-        body.push_str("status: Proposed\n");
-        if let Some(s) = supersedes {
-            body.push_str(&format!("supersedes: {}\n", s));
-        }
         body.push_str("---\n\n");
+        body.push_str(&format!("Date: {}\n", date));
+        body.push_str("Status: Proposed\n");
+        if let Some(sup) = &supersedes_display {
+            body.push_str(&format!("Supersedes: {}\n", sup));
+        }
+        body.push_str("\n");
         body.push_str("## Context\n\nDescribe the context and forces at play.\n\n");
         body.push_str("## Decision\n\nState the decision that was made and why.\n\n");
         body.push_str("## Consequences\n\nList the trade-offs and follow-ups.\n");
@@ -110,42 +110,61 @@ pub fn mark_superseded<R: AdrRepository>(
     let contents = repo.read_string(&path)?;
     let mut updated = String::new();
     if let Some(stripped) = contents.strip_prefix("---\n") {
-        // Update YAML front matter if present
+        // Front matter present: keep it as-is, update fields in body
         if let Some(end) = stripped.find("\n---\n") {
             let fm_block = &stripped[..end];
-            #[derive(serde::Deserialize, serde::Serialize)]
-            struct FM {
-                #[serde(default)]
-                title: Option<String>,
-                #[serde(default)]
-                date: Option<String>,
-                #[serde(default)]
-                status: Option<String>,
-                #[serde(default)]
-                number: Option<u32>,
-                #[serde(default)]
-                supersedes: Option<u32>,
-                #[serde(default)]
-                superseded_by: Option<u32>,
-            }
-            let mut fm: FM = serde_yaml::from_str(fm_block).unwrap_or(FM {
-                title: None,
-                date: None,
-                status: None,
-                number: None,
-                supersedes: None,
-                superseded_by: None,
-            });
-            fm.status = Some(format!("Superseded by {:04}", new_number));
-            fm.superseded_by = Some(new_number);
             let rest = &stripped[end + 5..];
+            let mut lines: Vec<String> = rest.lines().map(|s| s.to_string()).collect();
+            // Update status/superseded-by with ordering
+            let mut idx_status: Option<usize> = None;
+            let mut idx_superseded_by: Option<usize> = None;
+            for (i, l) in lines.iter_mut().enumerate() {
+                if l.starts_with("Status:") {
+                    *l = format!("Status: Superseded by {:04}", new_number);
+                    idx_status = Some(i);
+                }
+                if l.starts_with("Superseded-by:") {
+                    *l = format!("Superseded-by: {:04}", new_number);
+                    idx_superseded_by = Some(i);
+                }
+            }
+            if idx_status.is_none() {
+                let insert_at = 0; // top of body
+                lines.insert(
+                    insert_at,
+                    format!("Status: Superseded by {:04}", new_number),
+                );
+                idx_status = Some(insert_at);
+            }
+            match (idx_status, idx_superseded_by) {
+                (Some(s_idx), Some(sb_idx)) => {
+                    let desired = s_idx + 1;
+                    if sb_idx != desired {
+                        let _ = lines.remove(sb_idx);
+                        let insert_pos = if sb_idx < desired {
+                            desired - 1
+                        } else {
+                            desired
+                        };
+                        lines.insert(insert_pos, format!("Superseded-by: {:04}", new_number));
+                    }
+                }
+                (Some(s_idx), None) => {
+                    lines.insert(s_idx + 1, format!("Superseded-by: {:04}", new_number));
+                }
+                _ => {}
+            }
+
             updated.push_str("---\n");
-            updated.push_str(&serde_yaml::to_string(&fm).unwrap_or_default());
-            updated.push_str("---\n");
-            if !rest.starts_with('\n') {
+            updated.push_str(fm_block);
+            updated.push_str("\n---\n");
+            if !rest.starts_with('\n') && (lines.first().map(|l| !l.is_empty()).unwrap_or(false)) {
                 updated.push('\n');
             }
-            updated.push_str(rest);
+            updated.push_str(&lines.join("\n"));
+            if !updated.ends_with('\n') {
+                updated.push('\n');
+            }
         } else {
             updated = contents;
         }
@@ -165,7 +184,10 @@ pub fn mark_superseded<R: AdrRepository>(
         }
         if idx_status.is_none() {
             let insert_at = if !lines.is_empty() { 1 } else { 0 };
-            lines.insert(insert_at, format!("Status: Superseded by {:04}", new_number));
+            lines.insert(
+                insert_at,
+                format!("Status: Superseded by {:04}", new_number),
+            );
             idx_status = Some(insert_at);
         }
         // Ensure Superseded-by appears immediately after Status
@@ -175,7 +197,11 @@ pub fn mark_superseded<R: AdrRepository>(
                 if sb_idx != desired {
                     // Remove current and insert at desired (adjust if removing before desired)
                     let _ = lines.remove(sb_idx);
-                    let insert_pos = if sb_idx < desired { desired - 1 } else { desired };
+                    let insert_pos = if sb_idx < desired {
+                        desired - 1
+                    } else {
+                        desired
+                    };
                     lines.insert(insert_pos, format!("Superseded-by: {:04}", new_number));
                 }
             }
@@ -225,27 +251,32 @@ pub fn accept<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
     if let Some(stripped) = content.strip_prefix("---\n") {
         if let Some(end) = stripped.find("\n---\n") {
             let fm_block = &stripped[..end];
-            #[derive(serde::Deserialize, serde::Serialize, Default)]
-            struct FM {
-                title: Option<String>,
-                date: Option<String>,
-                status: Option<String>,
-                number: Option<u32>,
-                supersedes: Option<u32>,
-                superseded_by: Option<u32>,
-            }
-            let mut fm: FM = serde_yaml::from_str(fm_block).unwrap_or_default();
-            fm.status = Some("Accepted".to_string());
-            fm.date = Some(today.clone());
             let rest = &stripped[end + 5..];
+            let mut lines: Vec<String> = rest.lines().map(|s| s.to_string()).collect();
+            let mut found_status = false;
+            let mut found_date = false;
+            for l in &mut lines {
+                if l.starts_with("Status:") {
+                    *l = "Status: Accepted".to_string();
+                    found_status = true;
+                }
+                if l.starts_with("Date:") {
+                    *l = format!("Date: {}", today);
+                    found_date = true;
+                }
+            }
+            if !found_status {
+                lines.insert(0, "Status: Accepted".to_string());
+            }
+            if !found_date {
+                lines.insert(0, format!("Date: {}", today));
+            }
             let mut out = String::new();
             out.push_str("---\n");
-            out.push_str(&serde_yaml::to_string(&fm).unwrap_or_default());
-            out.push_str("---\n");
-            if !rest.starts_with('\n') {
-                out.push('\n');
-            }
-            out.push_str(rest);
+            out.push_str(fm_block);
+            out.push_str("\n---\n");
+            out.push_str(&lines.join("\n"));
+            out.push('\n');
             content = out;
         }
     } else {
@@ -306,27 +337,32 @@ pub fn reject<R: AdrRepository>(repo: &R, cfg: &Config, id_or_title: &str) -> Re
     if let Some(stripped) = content.strip_prefix("---\n") {
         if let Some(end) = stripped.find("\n---\n") {
             let fm_block = &stripped[..end];
-            #[derive(serde::Deserialize, serde::Serialize, Default)]
-            struct FM {
-                title: Option<String>,
-                date: Option<String>,
-                status: Option<String>,
-                number: Option<u32>,
-                supersedes: Option<u32>,
-                superseded_by: Option<u32>,
-            }
-            let mut fm: FM = serde_yaml::from_str(fm_block).unwrap_or_default();
-            fm.status = Some("Rejected".to_string());
-            fm.date = Some(today.clone());
             let rest = &stripped[end + 5..];
+            let mut lines: Vec<String> = rest.lines().map(|s| s.to_string()).collect();
+            let mut found_status = false;
+            let mut found_date = false;
+            for l in &mut lines {
+                if l.starts_with("Status:") {
+                    *l = "Status: Rejected".to_string();
+                    found_status = true;
+                }
+                if l.starts_with("Date:") {
+                    *l = format!("Date: {}", today);
+                    found_date = true;
+                }
+            }
+            if !found_status {
+                lines.insert(0, "Status: Rejected".to_string());
+            }
+            if !found_date {
+                lines.insert(0, format!("Date: {}", today));
+            }
             let mut out = String::new();
             out.push_str("---\n");
-            out.push_str(&serde_yaml::to_string(&fm).unwrap_or_default());
-            out.push_str("---\n");
-            if !rest.starts_with('\n') {
-                out.push('\n');
-            }
-            out.push_str(rest);
+            out.push_str(fm_block);
+            out.push_str("\n---\n");
+            out.push_str(&lines.join("\n"));
+            out.push('\n');
             content = out;
         }
     } else {
@@ -498,8 +534,8 @@ mod tests {
         let c = repo.read_string(&meta.path).unwrap();
         assert!(c.starts_with("---\n"));
         assert!(c.contains("title:"));
-        assert!(c.contains("status: Proposed"));
-        assert!(c.contains("number: 1"));
+        assert!(c.contains("Status: Proposed"));
+        assert!(c.contains("Date:"));
     }
 
     #[test]

@@ -218,8 +218,9 @@ fn mdx_new_creates_front_matter_and_index() {
     let c = read(&adr);
     assert!(c.starts_with("---\n"));
     assert!(c.contains("title:"));
-    assert!(c.contains("status: Proposed"));
-    assert!(c.contains("number: 1"));
+    // After front matter, ensure classic fields exist
+    assert!(c.contains("Status: Proposed"));
+    assert!(c.contains("Date:"));
     assert!(c.contains("## Context"));
 
     // index exists and includes entry
@@ -248,7 +249,7 @@ fn mdx_accept_updates_front_matter() {
         .assert()
         .success();
 
-    // accept should update YAML front matter status/date
+    // accept should update classic fields after front matter
     assert_cmd::Command::cargo_bin("radr")
         .unwrap()
         .current_dir(tmp.path())
@@ -258,8 +259,8 @@ fn mdx_accept_updates_front_matter() {
 
     let adr = tmp.path().join("adrs").join("0001-accept-me.mdx");
     let c = read(&adr);
-    assert!(c.contains("status: Accepted"));
-    assert!(c.contains(&format!("date: {}", today)));
+    assert!(c.contains("Status: Accepted"));
+    assert!(c.contains(&format!("Date: {}", today)));
 }
 
 #[test]
@@ -294,12 +295,12 @@ fn mdx_supersede_updates_front_matter_and_index() {
     assert!(new_adr.exists());
 
     let old_c = read(&old);
-    assert!(old_c.contains("status: Superseded by 0002"));
-    assert!(old_c.contains("superseded_by: 2"));
+    assert!(old_c.contains("Status: Superseded by 0002"));
+    assert!(old_c.contains("Superseded-by: 0002"));
 
     let new_c = read(&new_adr);
-    assert!(new_c.contains("supersedes: 1"));
-    assert!(new_c.contains("status: Proposed"));
+    assert!(new_c.contains("Supersedes: [0001]("));
+    assert!(new_c.contains("Status: Proposed"));
 
     let index = tmp.path().join("adrs").join("INDEX.md");
     let idx = read(&index);
