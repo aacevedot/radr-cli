@@ -264,13 +264,9 @@ pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<Adr
                 || l.starts_with("Status:")
                 || l.starts_with("Supersedes:")
                 || l.starts_with("Superseded-by:");
-            if is_meta {
+            if is_meta || l.trim().is_empty() {
                 i += 1;
                 continue;
-            }
-            if l.trim().is_empty() {
-                i += 1;
-                break;
             }
             break;
         }
