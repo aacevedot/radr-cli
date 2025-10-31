@@ -151,28 +151,40 @@ pub fn mark_superseded<R: AdrRepository>(
         }
     } else {
         let mut lines: Vec<String> = contents.lines().map(|s| s.to_string()).collect();
-        let mut found_status = false;
-        let mut found_superseded_by = false;
-        for l in &mut lines {
+        let mut idx_status: Option<usize> = None;
+        let mut idx_superseded_by: Option<usize> = None;
+        for (i, l) in lines.iter_mut().enumerate() {
             if l.starts_with("Status:") {
                 *l = format!("Status: Superseded by {:04}", new_number);
-                found_status = true;
+                idx_status = Some(i);
             }
             if l.starts_with("Superseded-by:") {
                 *l = format!("Superseded-by: {:04}", new_number);
-                found_superseded_by = true;
+                idx_superseded_by = Some(i);
             }
         }
-        if !found_status {
-            lines.insert(1, format!("Status: Superseded by {:04}", new_number));
+        if idx_status.is_none() {
+            let insert_at = if !lines.is_empty() { 1 } else { 0 };
+            lines.insert(insert_at, format!("Status: Superseded by {:04}", new_number));
+            idx_status = Some(insert_at);
         }
-        if !found_superseded_by {
-            let insert_at = lines
-                .iter()
-                .position(|l| l.trim().is_empty())
-                .unwrap_or(lines.len());
-            lines.insert(insert_at, format!("Superseded-by: {:04}", new_number));
+        // Ensure Superseded-by appears immediately after Status
+        match (idx_status, idx_superseded_by) {
+            (Some(s_idx), Some(sb_idx)) => {
+                let desired = s_idx + 1;
+                if sb_idx != desired {
+                    // Remove current and insert at desired (adjust if removing before desired)
+                    let _ = lines.remove(sb_idx);
+                    let insert_pos = if sb_idx < desired { desired - 1 } else { desired };
+                    lines.insert(insert_pos, format!("Superseded-by: {:04}", new_number));
+                }
+            }
+            (Some(s_idx), None) => {
+                lines.insert(s_idx + 1, format!("Superseded-by: {:04}", new_number));
+            }
+            _ => {}
         }
+
         updated = lines.join("\n");
         if !updated.ends_with('\n') {
             updated.push('\n');
@@ -439,6 +451,10 @@ mod tests {
         let contents = repo.read_string(&old_path).unwrap();
         assert!(contents.contains("Status: Superseded by 0002"));
         assert!(contents.contains("Superseded-by: 0002"));
+        // Ensure Superseded-by appears right after Status
+        let pos_status = contents.find("Status: Superseded by 0002").unwrap();
+        let pos_sb = contents.find("Superseded-by: 0002").unwrap();
+        assert!(pos_status < pos_sb);
     }
 
     #[test]

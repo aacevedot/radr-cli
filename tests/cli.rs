@@ -105,6 +105,9 @@ fn supersede_marks_old_and_new_proposed_and_updates_index() {
     let old_c = read(&old);
     assert!(old_c.contains("Status: Superseded by 0002"));
     assert!(old_c.contains("Superseded-by: 0002"));
+    let s_pos = old_c.find("Status: Superseded by 0002").unwrap();
+    let sb_pos = old_c.find("Superseded-by: 0002").unwrap();
+    assert!(s_pos < sb_pos);
 
     let new_c = read(&new_adr);
     assert!(new_c.contains("Supersedes: [0001](0001-choose-x.md)"));
