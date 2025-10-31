@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 
-use radr::actions::{accept, create_new_adr, list_and_index, mark_superseded, reformat, reformat_all, reject};
+use radr::actions::{
+    accept, create_new_adr, list_and_index, mark_superseded, reformat, reformat_all, reject,
+};
 use radr::config::load_config;
 use radr::domain::parse_number;
 use radr::repository::AdrRepository;
@@ -135,9 +137,15 @@ fn main() -> Result<()> {
         Commands::Reformat { all, id } => {
             if all {
                 let updated = reformat_all(&repo, &cfg)?;
-                println!("Reformatted {} ADR(s) to {} (front matter: {})", updated.len(), cfg.format, cfg.front_matter);
+                println!(
+                    "Reformatted {} ADR(s) to {} (front matter: {})",
+                    updated.len(),
+                    cfg.format,
+                    cfg.front_matter
+                );
             } else {
-                let id = id.ok_or_else(|| anyhow::anyhow!("Missing ADR id. Pass an id or use --all"))?;
+                let id =
+                    id.ok_or_else(|| anyhow::anyhow!("Missing ADR id. Pass an id or use --all"))?;
                 let n = parse_number(&id)?;
                 let updated = reformat(&repo, &cfg, n)?;
                 println!(

@@ -271,7 +271,11 @@ pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<Adr
             break;
         }
         let tail = lines[i..].join("\n");
-        if tail.is_empty() { String::new() } else { format!("{}\n", tail) }
+        if tail.is_empty() {
+            String::new()
+        } else {
+            format!("{}\n", tail)
+        }
     }
 
     let tail_body = body_after_meta(&original);
@@ -297,10 +301,7 @@ pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<Adr
         new_content.push('\n');
         new_content.push_str(&tail_body);
     } else {
-        new_content.push_str(&format!(
-            "# ADR {:04}: {}\n\n",
-            target.number, target.title
-        ));
+        new_content.push_str(&format!("# ADR {:04}: {}\n\n", target.number, target.title));
         new_content.push_str(&format!("Date: {}\n", target.date));
         new_content.push_str(&format!("Status: {}\n", target.status));
         if let Some(n) = target.superseded_by {
