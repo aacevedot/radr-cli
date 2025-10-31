@@ -57,7 +57,7 @@ pub fn create_new_adr<R: AdrRepository>(
         if let Some(sup) = &supersedes_display {
             body.push_str(&format!("Supersedes: {}\n", sup));
         }
-        body.push_str("\n");
+        body.push('\n');
         body.push_str("## Context\n\nDescribe the context and forces at play.\n\n");
         body.push_str("## Decision\n\nState the decision that was made and why.\n\n");
         body.push_str("## Consequences\n\nList the trade-offs and follow-ups.\n");
@@ -249,7 +249,7 @@ pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<Adr
                 rest = &stripped[end + 5..];
             }
         }
-        let mut lines: Vec<&str> = rest.lines().collect();
+        let lines: Vec<&str> = rest.lines().collect();
         let mut i = 0usize;
         if i < lines.len() && lines[i].starts_with("# ADR ") {
             i += 1;
@@ -298,7 +298,7 @@ pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<Adr
                 new_content.push_str(&format!("Supersedes: {:04}\n", n));
             }
         }
-        new_content.push_str("\n");
+        new_content.push('\n');
         new_content.push_str(&tail_body);
     } else {
         new_content.push_str(&format!(
@@ -317,7 +317,7 @@ pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<Adr
                 new_content.push_str(&format!("Supersedes: {:04}\n", n));
             }
         }
-        new_content.push_str("\n");
+        new_content.push('\n');
         new_content.push_str(&tail_body);
     }
 
@@ -356,15 +356,6 @@ pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<Adr
                         let num_str = &l[lb + 1..lb + 1 + rb];
                         if let Ok(n) = num_str.parse::<u32>() {
                             if n == id {
-                                // Ensure pattern has (...)
-                                if let Some(lp) = l.find('(') {
-                                    if let Some(rp) = l.rfind(')') {
-                                        *l = format!("Supersedes: [{:04}]({})", n, new_filename);
-                                        changed = true;
-                                        continue;
-                                    }
-                                }
-                                // No parens -> just rewrite to include link
                                 *l = format!("Supersedes: [{:04}]({})", n, new_filename);
                                 changed = true;
                             }
