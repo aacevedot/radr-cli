@@ -224,6 +224,174 @@ pub fn mark_superseded<R: AdrRepository>(
     Ok(())
 }
 
+pub fn reformat<R: AdrRepository>(repo: &R, cfg: &Config, id: u32) -> Result<AdrMeta> {
+    let adrs = repo.list()?;
+    let target = adrs
+        .iter()
+        .find(|a| a.number == id)
+        .ok_or_else(|| anyhow!("ADR not found by id: {:04}", id))?;
+
+    let original = repo.read_string(&target.path)?;
+
+    // Build map for linking by number
+    let mut by_number: HashMap<u32, String> = HashMap::new();
+    for a in &adrs {
+        if let Some(fname) = a.path.file_name().and_then(OsStr::to_str) {
+            by_number.insert(a.number, fname.to_string());
+        }
+    }
+
+    // Extract body content after any header/front-matter + meta lines
+    fn body_after_meta(raw: &str) -> String {
+        let mut rest = raw;
+        if let Some(stripped) = raw.strip_prefix("---\n") {
+            if let Some(end) = stripped.find("\n---\n") {
+                rest = &stripped[end + 5..];
+            }
+        }
+        let mut lines: Vec<&str> = rest.lines().collect();
+        let mut i = 0usize;
+        if i < lines.len() && lines[i].starts_with("# ADR ") {
+            i += 1;
+            if i < lines.len() && lines[i].trim().is_empty() {
+                i += 1;
+            }
+        }
+        while i < lines.len() {
+            let l = lines[i];
+            let is_meta = l.starts_with("Title:")
+                || l.starts_with("Date:")
+                || l.starts_with("Status:")
+                || l.starts_with("Supersedes:")
+                || l.starts_with("Superseded-by:");
+            if is_meta {
+                i += 1;
+                continue;
+            }
+            if l.trim().is_empty() {
+                i += 1;
+                break;
+            }
+            break;
+        }
+        let tail = lines[i..].join("\n");
+        if tail.is_empty() { String::new() } else { format!("{}\n", tail) }
+    }
+
+    let tail_body = body_after_meta(&original);
+
+    // Render new content according to cfg
+    let mut new_content = String::new();
+    if cfg.front_matter {
+        new_content.push_str("---\n");
+        new_content.push_str(&format!("title: {}\n", escape_yaml(&target.title)));
+        new_content.push_str("---\n\n");
+        new_content.push_str(&format!("Date: {}\n", target.date));
+        new_content.push_str(&format!("Status: {}\n", target.status));
+        if let Some(n) = target.superseded_by {
+            new_content.push_str(&format!("Superseded-by: {:04}\n", n));
+        }
+        if let Some(n) = target.supersedes {
+            if let Some(fname) = by_number.get(&n) {
+                new_content.push_str(&format!("Supersedes: [{:04}]({})\n", n, fname));
+            } else {
+                new_content.push_str(&format!("Supersedes: {:04}\n", n));
+            }
+        }
+        new_content.push_str("\n");
+        new_content.push_str(&tail_body);
+    } else {
+        new_content.push_str(&format!(
+            "# ADR {:04}: {}\n\n",
+            target.number, target.title
+        ));
+        new_content.push_str(&format!("Date: {}\n", target.date));
+        new_content.push_str(&format!("Status: {}\n", target.status));
+        if let Some(n) = target.superseded_by {
+            new_content.push_str(&format!("Superseded-by: {:04}\n", n));
+        }
+        if let Some(n) = target.supersedes {
+            if let Some(fname) = by_number.get(&n) {
+                new_content.push_str(&format!("Supersedes: [{:04}]({})\n", n, fname));
+            } else {
+                new_content.push_str(&format!("Supersedes: {:04}\n", n));
+            }
+        }
+        new_content.push_str("\n");
+        new_content.push_str(&tail_body);
+    }
+
+    // Determine new path
+    let slug = slugify(&target.title);
+    let ext = cfg.format.as_str();
+    let new_filename = format!("{:04}-{}.{}", target.number, slug, ext);
+    let new_path = repo.adr_dir().join(new_filename);
+
+    repo.write_string(&new_path, &new_content)?;
+
+    // Remove old file if different path
+    if new_path != target.path {
+        let _ = std::fs::remove_file(&target.path);
+    }
+
+    // Update incoming links in other ADRs' Supersedes lines to point to the new filename
+    let new_filename = new_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or("")
+        .to_string();
+    let mut adrs_scan = repo.list()?;
+    for a in &mut adrs_scan {
+        if a.number == id {
+            continue;
+        }
+        let content = repo.read_string(&a.path)?;
+        let mut changed = false;
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        for l in &mut lines {
+            if l.starts_with("Supersedes: [") {
+                // Try to parse number between [ and ]
+                if let Some(lb) = l.find('[') {
+                    if let Some(rb) = l[lb + 1..].find(']') {
+                        let num_str = &l[lb + 1..lb + 1 + rb];
+                        if let Ok(n) = num_str.parse::<u32>() {
+                            if n == id {
+                                // Ensure pattern has (...)
+                                if let Some(lp) = l.find('(') {
+                                    if let Some(rp) = l.rfind(')') {
+                                        *l = format!("Supersedes: [{:04}]({})", n, new_filename);
+                                        changed = true;
+                                        continue;
+                                    }
+                                }
+                                // No parens -> just rewrite to include link
+                                *l = format!("Supersedes: [{:04}]({})", n, new_filename);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if changed {
+            let mut out = lines.join("\n");
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+            repo.write_string(&a.path, &out)?;
+        }
+    }
+
+    // Refresh index and return updated meta
+    let adrs2 = repo.list()?;
+    write_index(repo, cfg, &adrs2)?;
+    let updated = adrs2
+        .into_iter()
+        .find(|a| a.number == target.number)
+        .ok_or_else(|| anyhow!("Reformatted ADR not found"))?;
+    Ok(updated)
+}
+
 pub fn list_and_index<R: AdrRepository>(repo: &R, cfg: &Config) -> Result<Vec<AdrMeta>> {
     let adrs = repo.list()?;
     write_index(repo, cfg, &adrs)?;

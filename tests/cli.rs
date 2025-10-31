@@ -484,3 +484,135 @@ fn template_via_config_is_applied() {
     assert!(c.contains("TEMPLATE"));
     assert!(c.contains("Status: Proposed"));
 }
+
+#[test]
+fn reformat_md_to_mdx_with_front_matter() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Create ADR with defaults (md, no front matter)
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Switch Format"])
+        .assert()
+        .success();
+
+    let md_path = adr_dir(tmp.path()).join("0001-switch-format.md");
+    assert!(md_path.exists());
+    let c0 = read(&md_path);
+    assert!(!c0.starts_with("---\n"));
+    assert!(c0.contains("# ADR 0001:"));
+
+    // Update config to MDX + front matter
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='docs/adr'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+
+    // Reformat
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["reformat", "1"])
+        .assert()
+        .success();
+
+    let mdx_path = adr_dir(tmp.path()).join("0001-switch-format.mdx");
+    assert!(mdx_path.exists());
+    assert!(!md_path.exists());
+    let c = read(&mdx_path);
+    assert!(c.starts_with("---\n"));
+    assert!(c.contains("title:"));
+    assert!(c.contains("Status:"));
+    assert!(c.contains("Date:"));
+}
+
+#[test]
+fn reformat_mdx_to_md_without_front_matter() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Create ADR with MDX + front matter
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='docs/adr'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Front First"])
+        .assert()
+        .success();
+
+    let mdx_path = adr_dir(tmp.path()).join("0001-front-first.mdx");
+    assert!(mdx_path.exists());
+    let c0 = read(&mdx_path);
+    assert!(c0.starts_with("---\n"));
+
+    // Switch to classic md without front matter
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='docs/adr'\nformat='md'\nfront_matter=false\n",
+    )
+    .unwrap();
+
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["reformat", "1"])
+        .assert()
+        .success();
+
+    let md_path = adr_dir(tmp.path()).join("0001-front-first.md");
+    assert!(md_path.exists());
+    assert!(!mdx_path.exists());
+    let c = read(&md_path);
+    assert!(c.contains("# ADR 0001:"));
+    assert!(c.contains("Status:"));
+    assert!(c.contains("Date:"));
+    assert!(!c.starts_with("---\n"));
+}
+
+#[test]
+fn reformat_updates_incoming_links() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Start classic md, no front matter
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["new", "Choose X"])
+        .assert()
+        .success();
+
+    // Supersede 1 -> 2 (creates link to 0001-choose-x.md)
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["supersede", "1", "Choose Y"])
+        .assert()
+        .success();
+
+    let adr2 = adr_dir(tmp.path()).join("0002-choose-y.md");
+    let before = read(&adr2);
+    assert!(before.contains("Supersedes: [0001](0001-choose-x.md)"));
+
+    // Switch config to MDX + front matter and reformat ADR 1
+    std::fs::write(
+        tmp.path().join("radr.toml"),
+        b"adr_dir='docs/adr'\nformat='mdx'\nfront_matter=true\n",
+    )
+    .unwrap();
+
+    assert_cmd::Command::cargo_bin("radr")
+        .unwrap()
+        .current_dir(tmp.path())
+        .args(["reformat", "1"])
+        .assert()
+        .success();
+
+    // ADR 2 should now link to .mdx filename
+    let after = read(&adr2);
+    assert!(after.contains("Supersedes: [0001](0001-choose-x.mdx)"));
+}
