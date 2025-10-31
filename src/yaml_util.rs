@@ -8,7 +8,7 @@ pub fn escape_yaml(input: &str) -> String {
     let contains_colon = input.contains(':');
     let contains_double_quote = input.contains('"');
     let contains_single_quote = input.contains("'");
-    let starts_with_digit = input.chars().next().map_or(false, |c| c.is_ascii_digit());
+    let starts_with_digit = input.chars().next().is_some_and(|c| c.is_ascii_digit());
 
     let needs_quotes = (contains_colon && !is_windows_drive_path)
         || contains_double_quote
