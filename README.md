@@ -5,7 +5,7 @@ Command Line Interface (CLI) application to manage Architecture Decision Records
 ## Overview
 
 - Purpose: Manage Architecture Decision Records (ADRs) from the command line.
-- Commands: create, supersede, list, accept, reject, and maintain an `index.md` file.
+- Commands: create, supersede, list, accept, reject, reformat, and maintain an `index.md` file.
 - Supported config formats: JSON, YAML, or TOML file to choose ADR location and template.
 
 ## Installation
@@ -43,6 +43,8 @@ Command Line Interface (CLI) application to manage Architecture Decision Records
 - Supersede with force: `radr supersede 3 "Redo Supersede" --force` (allows superseding an ADR even if it is already superseded)
 - Reject ADR: `radr reject 3` or `radr reject "Adopt PostgreSQL"`
 - List + regenerate index: `radr list` or `radr index`
+- Reformat one ADR to current config: `radr reformat 3`
+- Reformat all ADRs to current config: `radr reformat --all`
 - Use config: `radr --config radr.toml list` or `RADR_CONFIG=radr.yaml radr list`
 
 ## Index
@@ -58,7 +60,7 @@ Command Line Interface (CLI) application to manage Architecture Decision Records
   - `index_name` (string): Name of the index file. Default: `index.md`.
   - `template` (string): Optional path to a custom template.
   - `format` (string): `md` or `mdx` for new ADRs. Default: `md`.
-  - `front_matter` (bool): If true, adds YAML front matter (`title`, `date`, `status`, `number`, optional `supersedes`). Default: `false`.
+  - `front_matter` (bool): If true, uses a YAML front matter block with only the `title`; `Date`, `Status`, and superseding info are written in the body. Default: `false`.
 
 ### Examples
 
@@ -120,6 +122,30 @@ Supersedes: 0003
 - On supersede, the older ADR is updated with:
   - `Status: Superseded by 000X`
   - `Superseded-by: 000X`
+
+### With front matter (mdx example)
+
+```
+---
+title: Example Title
+---
+
+Date: 2025-01-01
+Status: Accepted
+Supersedes: [0003](0003-previous-decision.mdx)
+
+## Context
+
+## Decision
+
+## Consequences
+```
+
+### Reformat command
+
+- `radr reformat 3` converts ADR 0003 to match the current `format` (`md` or `mdx`) and `front_matter` settings.
+- `radr reformat --all` converts all ADRs.
+- When file extensions change, the index and any `Supersedes: [NNNN](...)` links in other ADRs are updated to point to the new filenames.
 
 ## Notes
 

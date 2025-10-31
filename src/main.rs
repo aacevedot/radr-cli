@@ -52,12 +52,19 @@ enum Commands {
     List,
     /// Regenerate the index.md file
     Index,
-    /// Reformat an ADR by id to current config
+    /// Reformat ADR(s) to the current config (format/front matter)
+    #[command(
+        about = "Reformat ADR(s) to the current config",
+        long_about = "Converts ADR content and filename to match the current config (format/front matter). \
+Use --all to reformat every ADR; otherwise pass a single ADR id. \
+Cross-links in Supersedes lines and the index are updated accordingly.\n\nExamples:\n  radr reformat 3\n  radr reformat --all"
+    )]
     Reformat {
         /// Reformat all ADRs to current config
-        #[arg(long)]
+        #[arg(long, help = "Reformat every ADR in the repository")]
         all: bool,
         /// ADR number to reformat (e.g., 0003 or 3). Ignored if --all is set.
+        #[arg(help = "ADR number to reformat; omit with --all")]
         id: Option<String>,
     },
 }
