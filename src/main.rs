@@ -54,8 +54,6 @@ enum Commands {
     Index,
 }
 
-// All core logic is now in the library modules.
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg: Config = load_config(cli.config.as_ref())?;
