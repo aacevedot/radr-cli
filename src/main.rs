@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 
-use radr::actions::{accept, create_new_adr, list_and_index, mark_superseded, reject};
+use radr::actions::{
+    accept, create_new_adr, list_and_index, mark_superseded, reformat, reformat_all, reject,
+};
 use radr::config::load_config;
 use radr::domain::parse_number;
 use radr::repository::AdrRepository;
@@ -52,9 +54,22 @@ enum Commands {
     List,
     /// Regenerate the index.md file
     Index,
+    /// Reformat ADR(s) to the current config (format/front matter)
+    #[command(
+        about = "Reformat ADR(s) to the current config",
+        long_about = "Converts ADR content and filename to match the current config (format/front matter). \
+Use --all to reformat every ADR; otherwise pass a single ADR id. \
+Cross-links in Supersedes lines and the index are updated accordingly.\n\nExamples:\n  radr reformat 3\n  radr reformat --all"
+    )]
+    Reformat {
+        /// Reformat all ADRs to current config
+        #[arg(long, help = "Reformat every ADR in the repository")]
+        all: bool,
+        /// ADR number to reformat (e.g., 0003 or 3). Ignored if --all is set.
+        #[arg(help = "ADR number to reformat; omit with --all")]
+        id: Option<String>,
+    },
 }
-
-// All core logic is now in the library modules.
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -118,6 +133,26 @@ fn main() -> Result<()> {
                 println!("{:04} | {} | {} | {}", a.number, a.title, a.status, a.date);
             }
             println!("Updated {}", cfg.adr_dir.join(&cfg.index_name).display());
+        }
+        Commands::Reformat { all, id } => {
+            if all {
+                let updated = reformat_all(&repo, &cfg)?;
+                println!(
+                    "Reformatted {} ADR(s) to {} (front matter: {})",
+                    updated.len(),
+                    cfg.format,
+                    cfg.front_matter
+                );
+            } else {
+                let id =
+                    id.ok_or_else(|| anyhow::anyhow!("Missing ADR id. Pass an id or use --all"))?;
+                let n = parse_number(&id)?;
+                let updated = reformat(&repo, &cfg, n)?;
+                println!(
+                    "Reformatted ADR {:04}: {} to {} (front matter: {})",
+                    updated.number, updated.title, cfg.format, cfg.front_matter
+                );
+            }
         }
     }
 
